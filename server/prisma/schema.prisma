@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  pinHash   String
+  name      String
+  role      String   @default("OWNER") // OWNER | ADMIN
+  shop      Shop?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Shop {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  city      String?
+  subcity   String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+  payments      Payment[]
+  devices       Device[]
+  sales         Sale[]
+  customers     Customer[]
+  products      ShopProduct[]
+  creditEntries CreditEntry[]
+  syncLogs      SyncLog[]
+}
+
+model Device {
+  id             String   @id @default(cuid())
+  shopId         String
+  shop           Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  deviceId       String
+  appVersion     String?
+  lastSeenAt     DateTime @default(now())
+  lastServerTime DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@unique([shopId, deviceId])
+}
+
+// ─── Billing ─────────────────────────────────────────────────────────────────
+
+model Package {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  months      Int
+  priceEtb    Float
+  description String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subscriptions Subscription[]
+  payments      Payment[]
+}
+
+model BankAccount {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  bankName      String
+  accountName   String
+  accountNumber String
+  branch        String?
+  instructions  String?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  payments Payment[]
+}
+
+model Subscription {
+  id        String    @id @default(cuid())
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  packageId String
+  package   Package   @relation(fields: [packageId], references: [id])
+  status    String    @default("PENDING") // PENDING | ACTIVE | EXPIRED | REJECTED
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  payments Payment[]
+
+  @@index([shopId, status])
+  @@index([endsAt])
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  shopId         String
+  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  packageId      String
+  package        Package       @relation(fields: [packageId], references: [id])
+  bankAccountId  String
+  bankAccount    BankAccount   @relation(fields: [bankAccountId], references: [id])
+  amountEtb      Float
+  transactionRef String        @unique
+  note           String?
+  status         String        @default("PENDING") // PENDING | APPROVED | REJECTED
+  adminNote      String?
+  submittedAt    DateTime      @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?
+
+  @@index([status])
+  @@index([shopId])
+}
+
+// ─── Product library ─────────────────────────────────────────────────────────
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  products ProductLibraryItem[]
+}
+
+model ProductLibraryItem {
+  id                  String   @id @default(cuid())
+  sku                 String   @unique
+  categoryId          String
+  category            Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name                String
+  barcode             String?
+  unit                String   @default("pcs")
+  defaultSellingPrice Float
+  defaultBuyingPrice  Float?
+  active              Boolean  @default(true)
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  shopProducts ShopProduct[]
+
+  @@index([categoryId])
+  @@index([updatedAt])
+}
+
+// ─── Shop data (mirrored from devices) ───────────────────────────────────────
+
+model ShopProduct {
+  id                String              @id @default(cuid())
+  shopId            String
+  shop              Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  libraryItemId     String?
+  libraryItem       ProductLibraryItem? @relation(fields: [libraryItemId], references: [id])
+  name              String
+  barcode           String?
+  unit              String              @default("pcs")
+  sellingPrice      Float
+  buyingPrice       Float?
+  stockQty          Float               @default(0)
+  lowStockThreshold Float               @default(0)
+  custom            Boolean             @default(false)
+  deleted           Boolean             @default(false)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([shopId, libraryItemId])
+  @@index([shopId])
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name          String
+  phone         String?
+  creditBalance Float    @default(0)
+  deleted       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales         Sale[]
+  creditEntries CreditEntry[]
+
+  @@index([shopId])
+}
+
+model Sale {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  receiptNo     String
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  customerName  String?
+  subtotal      Float
+  discount      Float    @default(0)
+  total         Float
+  paid          Float
+  credit        Float    @default(0)
+  cost          Float    @default(0)
+  profit        Float    @default(0)
+  paymentMethod String
+  soldAt        DateTime
+  createdAt     DateTime @default(now())
+
+  items         SaleItem[]
+  creditEntries CreditEntry[]
+
+  @@unique([shopId, receiptNo])
+  @@index([shopId, soldAt])
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String?
+  name      String
+  unit      String
+  qty       Float
+  unitPrice Float
+  unitCost  Float?
+  lineTotal Float
+
+  @@index([saleId])
+}
+
+model CreditEntry {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  saleId     String?
+  sale       Sale?    @relation(fields: [saleId], references: [id])
+  type       String // CREDIT | PAYMENT | ADJUSTMENT
+  amount     Float
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([shopId, customerId])
+}
+
+model SyncLog {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  entity    String
+  entityId  String
+  createdAt DateTime @default(now())
+
+  @@index([shopId, createdAt])
+}
