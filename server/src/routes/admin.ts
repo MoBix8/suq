@@ -1,14 +1,52 @@
-import { Prisma } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAdmin } from "../auth";
 import { AppError, asyncHandler } from "../errors";
 import { addMonths } from "../lib/date";
 import { pageMeta, pageParams } from "../lib/pagination";
-import { slugify } from "../lib/phone";
+import { phoneSchema, pinSchema, slugify } from "../lib/phone";
 import { prisma } from "../prisma";
 
 export const adminRouter = Router();
+
+// ─── Admin users ─────────────────────────────────────────────────────────────
+
+const adminCreateSchema = z.object({
+  phone: phoneSchema,
+  pin: pinSchema,
+  name: z.string().trim().min(2).max(80),
+});
+
+adminRouter.post(
+  "/admins",
+  asyncHandler(async (req, res) => {
+    const body = adminCreateSchema.parse(req.body);
+    const existing = await prisma.user.findUnique({ where: { phone: body.phone } });
+    if (existing) throw new AppError(409, "An account with this phone already exists");
+    const user = await prisma.user.create({
+      data: {
+        phone: body.phone,
+        pinHash: await bcrypt.hash(body.pin, 10),
+        name: body.name,
+        role: "ADMIN",
+      },
+    });
+    res.status(201).json({ user: { id: user.id, phone: user.phone, name: user.name, role: user.role } });
+  }),
+);
+
+adminRouter.get(
+  "/admins",
+  asyncHandler(async (_req, res) => {
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true, phone: true, name: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+    res.json({ admins });
+  }),
+);
 
 adminRouter.use(requireAdmin);
 

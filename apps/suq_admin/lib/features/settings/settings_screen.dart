@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api_client.dart';
 import '../../core/gemini_key.dart';
 import '../../core/theme.dart';
+import '../../providers.dart';
 import '../../widgets/common.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -68,8 +72,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showAppSnack(context, 'Gemini API key removed.');
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _createAdmin() async {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final pinCtrl = TextEditingController();
+    String? error;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Create admin account'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'Full name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'Phone number'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pinCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'PIN (min 4)'),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(error!, style: const TextStyle(color: AdminColors.danger, fontSize: 12.5)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                final phone = phoneCtrl.text.trim();
+                final pin = pinCtrl.text.trim();
+                if (name.length < 2) {
+                  setDialogState(() => error = 'Enter a name.');
+                  return;
+                }
+                if (phone.isEmpty) {
+                  setDialogState(() => error = 'Enter a phone number.');
+                  return;
+                }
+                if (pin.length < 4) {
+                  setDialogState(() => error = 'PIN must be at least 4 digits.');
+                  return;
+                }
+                try {
+                  final api = ProviderScope.containerOf(dialogContext).read(apiProvider);
+                  await api.post('/admin/admins', body: {
+                    'name': name,
+                    'phone': phone,
+                    'pin': pin,
+                  });
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
+                } on ApiException catch (e) {
+                  setDialogState(() => error = e.message);
+                } catch (e) {
+                  setDialogState(() => error = e.toString());
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    phoneCtrl.dispose();
+    pinCtrl.dispose();
+    if (result == true && mounted) {
+      showAppSnack(context, 'Admin account created.');
+    }
+  }
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: _loading
@@ -133,6 +226,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 24),
+              const Text(
+                'Admin accounts',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AdminColors.ink,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'Create additional administrator accounts.',
+                style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
+              ),
+              const SizedBox(height: 18),
+              SectionCard(
+                child: FilledButton.icon(
+                  onPressed: _createAdmin,
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 19),
+                  label: const Text('Create admin account'),
+                ),
+              ),
+            ],
             ),
     );
   }

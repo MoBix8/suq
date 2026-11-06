@@ -437,43 +437,7 @@ async function main() {
     },
   });
 
-  const owner = await prisma.user.upsert({
-    where: { phone: "0911111111" },
-    update: {},
-    create: {
-      phone: "0911111111",
-      name: "Abebe Kebede",
-      pinHash: bcrypt.hashSync("1234", 10),
-      shop: {
-        create: {
-          name: "Abebe Mini Market",
-          city: "Addis Ababa",
-          subcity: "Bole",
-          phone: "0911111111",
-        },
-      },
-    },
-    include: { shop: true },
-  });
-
-  const pendingOwner = await prisma.user.upsert({
-    where: { phone: "0922222222" },
-    update: {},
-    create: {
-      phone: "0922222222",
-      name: "Hana Tesfaye",
-      pinHash: bcrypt.hashSync("1234", 10),
-      shop: {
-        create: {
-          name: "Hana Kiosk",
-          city: "Addis Ababa",
-          subcity: "Kirkos",
-          phone: "0922222222",
-        },
-      },
-    },
-    include: { shop: true },
-  });
+  // Admin account only — no demo shops. Shops are created by real owners via registration.
 
   const packages = [
     { code: "pkg_1m", name: "1 Month", months: 1, priceEtb: 200, description: "200 ETB per month.", sortOrder: 1 },
@@ -609,8 +573,6 @@ async function main() {
 
   console.log(`Seeded ${products.length} products, ${categories.length} categories.`);
   console.log("Admin: 0900000000 / 1234");
-  console.log("Owner (active): 0911111111 / 1234");
-  console.log("Owner (pending payment): 0922222222 / 1234");
   console.log(`Admin id: ${admin.id}`);
 }
 
