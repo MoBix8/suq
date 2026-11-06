@@ -12,3 +12,5 @@ dist/
 # Flutter/Dart build output (each app also has its own .gitignore).
 .dart_tool/
 build/
+
+.vercel

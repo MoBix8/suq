@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
@@ -10,6 +11,8 @@ import { prisma } from "../prisma";
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
+
+adminRouter.patch(
   "/admins/:id",
   asyncHandler(async (req, res) => {
     const body = z.object({
@@ -26,7 +29,7 @@ adminRouter.use(requireAdmin);
       if (dup) throw new AppError(409, "An account with this phone already exists");
     }
 
-    const data: Record<string, unknown> = {};
+    const data: any = {};
     if (body.name) data.name = body.name;
     if (body.phone) data.phone = body.phone;
     if (body.pin) data.pinHash = await bcrypt.hash(body.pin, 10);

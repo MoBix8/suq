@@ -200,8 +200,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _createAdmin() async {
     setState(() => _creatingAdmin = true);
-    // ... existing dialog code ...
-  }
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final pinCtrl = TextEditingController();
