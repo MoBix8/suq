@@ -655,7 +655,7 @@ adminRouter.get(
       ...(all ? {} : { active: true }),
       ...(categoryId ? { categoryId } : {}),
       ...(q
-        ? { OR: [{ name: { contains: q } }, { sku: { contains: q } }, { barcode: { contains: q } }] }
+        ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { sku: { contains: q, mode: "insensitive" } }, { barcode: { contains: q, mode: "insensitive" } }] }
         : {}),
     };
     const [total, products] = await Promise.all([

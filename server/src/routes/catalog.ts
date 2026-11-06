@@ -57,9 +57,9 @@ catalogRouter.get(
       ...(query.q
         ? {
             OR: [
-              { name: { contains: query.q } },
-              { barcode: { contains: query.q } },
-              { sku: { contains: query.q } },
+              { name: { contains: query.q, mode: "insensitive" } },
+              { barcode: { contains: query.q, mode: "insensitive" } },
+              { sku: { contains: query.q, mode: "insensitive" } },
             ],
           }
         : {}),
