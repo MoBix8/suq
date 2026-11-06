@@ -39,6 +39,6 @@ export function errorHandler(
     return;
   }
   console.error(err);
-  const message = err instanceof Error ? err.message : "Internal server error";
-  res.status(500).json({ error: message });
+  const message = err instanceof Error ? err.message : String(err);
+  res.status(500).json({ error: message, stack: err instanceof Error ? err.stack : undefined });
 }
