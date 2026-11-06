@@ -8,14 +8,14 @@ import '../../core/theme.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _key = TextEditingController();
   bool _obscure = true;
   bool _loading = true;
@@ -36,7 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _loading = false;
       });
     });
-    _loadAdmins();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAdmins());
   }
 
   Future<void> _editAdmin(Map<String, dynamic> admin) async {
@@ -96,7 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (name.isNotEmpty) body['name'] = name;
                   if (phone.isNotEmpty) body['phone'] = phone;
                   if (pin.isNotEmpty) body['pin'] = pin;
-                  final api = ProviderScope.containerOf(dialogContext).read(apiProvider);
+                  final api = ref.read(apiProvider);
                   await api.patch('/admin/admins/${admin['id']}', body: body);
                   if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
                 } on ApiException catch (e) {
@@ -130,7 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (!confirmed) return;
     try {
-      final api = ProviderScope.containerOf(context).read(apiProvider);
+      final api = ref.read(apiProvider);
       await api.delete('/admin/admins/${admin['id']}');
       if (mounted) {
         showAppSnack(context, 'Admin deleted.');
@@ -146,7 +146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadAdmins() async {
     setState(() => _adminsLoading = true);
     try {
-      final api = ProviderScope.containerOf(context).read(apiProvider);
+      final api = ref.read(apiProvider);
       final response = await api.get('/admin/admins');
       final list = response['admins'] as List<dynamic>? ?? [];
       if (mounted) {
@@ -264,7 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return;
                 }
                 try {
-                  final api = ProviderScope.containerOf(dialogContext).read(apiProvider);
+                  final api = ref.read(apiProvider);
                   await api.post('/admin/admins', body: {
                     'name': name,
                     'phone': phone,
@@ -295,7 +295,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh admins',
+            onPressed: _loadAdmins,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
