@@ -43,6 +43,11 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
   }
 
   Future<void> _submitPayment(PackagePlan plan, BankAccount bank) async {
+    final payments = ref.read(paymentsProvider).asData?.value ?? const <PaymentRecord>[];
+    if (payments.any((payment) => payment.pending)) {
+      setState(() => _formError = 'You already have a payment pending review. Wait for approval or rejection before submitting another.');
+      return;
+    }
     final reference = _transactionRef.text.trim();
     if (reference.length < 4) {
       setState(() => _formError = 'Enter the transaction number from your bank SMS.');
@@ -226,6 +231,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       transactionRef: _transactionRef,
                       note: _note,
                       submitting: _submitting,
+                      hasPending: ref.watch(paymentsProvider).asData?.value?.any((p) => p.pending) ?? false,
                       formError: _formError,
                       onSubmit: _submitPayment,
                     ),
@@ -509,6 +515,7 @@ class _PaymentForm extends StatelessWidget {
     required this.transactionRef,
     required this.note,
     required this.submitting,
+    required this.hasPending,
     required this.formError,
     required this.onSubmit,
   });
@@ -520,6 +527,7 @@ class _PaymentForm extends StatelessWidget {
   final TextEditingController transactionRef;
   final TextEditingController note;
   final bool submitting;
+  final bool hasPending;
   final String? formError;
   final Future<void> Function(PackagePlan plan, BankAccount bank) onSubmit;
 
@@ -591,6 +599,28 @@ class _PaymentForm extends StatelessWidget {
                   prefixIcon: Icon(Icons.notes_rounded),
                 ),
               ),
+              if (hasPending) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.schedule_rounded, size: 18, color: AppColors.warning),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You have a payment pending review. Wait for approval or rejection before submitting another.',
+                          style: TextStyle(fontSize: 12.5, color: AppColors.ink),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (formError != null) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -600,7 +630,7 @@ class _PaymentForm extends StatelessWidget {
               ],
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: submitting ? null : () => onSubmit(plan, bank),
+                onPressed: (submitting || hasPending) ? null : () => onSubmit(plan, bank),
                 icon: submitting
                     ? const SizedBox(
                         width: 18,

@@ -47,10 +47,10 @@ billingRouter.post(
     const pendingCount = await prisma.payment.count({
       where: { shopId, status: "PENDING" },
     });
-    if (pendingCount >= 3) {
+    if (pendingCount >= 1) {
       throw new AppError(
-        429,
-        "You already have 3 pending payments. Wait for the admin to review them.",
+        409,
+        "You already have a payment pending review. Wait for the admin to approve or reject it before submitting another.",
       );
     }
 
