@@ -32,6 +32,7 @@ class AppDatabase {
         category_name TEXT NOT NULL,
         name TEXT NOT NULL,
         name_am TEXT,
+        name_or TEXT,
         barcode TEXT,
         unit TEXT NOT NULL DEFAULT 'pcs',
         default_selling_price REAL NOT NULL,
@@ -56,7 +57,7 @@ class AppDatabase {
     final path = p.join(directory.path, 'suq_local.db');
     _db = await openDatabase(
       path,
-      version: 5,
+      version: 7,
       onCreate: (db, version) async {
         final batch = db.batch();
         batch.execute('''
@@ -195,6 +196,19 @@ class AppDatabase {
           try {
             await db.execute('ALTER TABLE sales ADD COLUMN returned INTEGER NOT NULL DEFAULT 0');
           } catch (_) {}
+        }
+        if (oldVersion < 6) {
+          for (final col in ['name_am', 'name_or']) {
+            try { await db.execute('ALTER TABLE products ADD COLUMN $col TEXT'); } catch (_) {}
+            try { await db.execute('ALTER TABLE library_products ADD COLUMN $col TEXT'); } catch (_) {}
+          }
+        }
+        if (oldVersion < 7) {
+          for (final col in ['name_am', 'name_or']) {
+            try { await db.execute('ALTER TABLE products ADD COLUMN $col TEXT'); } catch (_) {}
+            try { await db.execute('ALTER TABLE library_products ADD COLUMN $col TEXT'); } catch (_) {}
+          }
+          try { await db.execute('ALTER TABLE sales ADD COLUMN returned INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
         }
       },
     );

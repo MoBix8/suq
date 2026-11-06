@@ -215,9 +215,11 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                     final accounts = banks.asData?.value ?? const <BankAccount>[];
                     return DropdownButtonFormField<String?>(
                       value: _bankFilter,
+                      isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: 'Account',
+                        labelText: 'Bank',
                         isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
                       items: [
                         const DropdownMenuItem<String?>(
