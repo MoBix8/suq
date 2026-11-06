@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
@@ -36,27 +37,71 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   }
 
   Future<void> _approve(PaymentRecord payment) async {
-    final confirmed = await confirmAction(
-      context,
-      title: 'Approve this payment?',
-      message:
-          '${payment.shopName ?? 'This shop'} sent ${money(payment.amountEtb)} '
-          'for the ${payment.packageName ?? 'selected'} package.\n\n'
-          'Reference: ${payment.transactionRef}\n\n'
-          'Approving extends the subscription by ${payment.packageMonths} '
-          'month${payment.packageMonths == 1 ? '' : 's'} from the current end date.',
-      confirmLabel: 'Approve',
+    final daysController = TextEditingController(
+      text: (payment.packageMonths * 30).toString(),
     );
-    if (!confirmed) return;
+    final days = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Approve this payment?'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${payment.shopName ?? 'This shop'} sent ${money(payment.amountEtb)} '
+                'for the ${payment.packageName ?? 'selected'} package.\n'
+                'Reference: ${payment.transactionRef}',
+                style: const TextStyle(fontSize: 12.5, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: daysController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: 'Days to grant',
+                  helperText: 'Default = package months × 30. Adjust for partial payments.',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = int.tryParse(daysController.text.trim());
+              if (value == null || value < 1) {
+                showAppSnack(context, 'Enter a valid number of days.', error: true);
+                return;
+              }
+              Navigator.of(context).pop(value);
+            },
+            child: const Text('Approve'),
+          ),
+        ],
+      ),
+    );
+    daysController.dispose();
+    if (days == null) return;
 
     setState(() => _busy.add(payment.id));
     try {
-      await ref.read(apiProvider).post('/admin/payments/${payment.id}/approve');
+      await ref.read(apiProvider).post(
+        '/admin/payments/${payment.id}/approve',
+        body: {'days': days},
+      );
       ref.invalidate(paymentsProvider);
       ref.invalidate(dashboardProvider);
       ref.invalidate(shopsProvider);
       if (mounted) {
-        showAppSnack(context, 'Payment approved. The subscription was extended.');
+        showAppSnack(context, 'Payment approved. $days day${days == 1 ? '' : 's'} granted.');
       }
     } on ApiException catch (error) {
       if (mounted) showAppSnack(context, error.message, error: true);

@@ -192,6 +192,7 @@ adminRouter.post(
   "/payments/:id/approve",
   asyncHandler(async (req, res) => {
     const adminId = req.auth!.userId;
+    const body = z.object({ days: z.number().int().min(1).max(365).optional() }).parse(req.body ?? {});
     const result = await prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({
         where: { id: req.params.id },
@@ -213,6 +214,9 @@ adminRouter.post(
         orderBy: { endsAt: "desc" },
       });
 
+      const extendByDays = body.days ?? payment.package.months * 30;
+      const extend = (base: Date) => new Date(base.getTime() + extendByDays * 86_400_000);
+
       let subscription;
       if (current && current.endsAt) {
         subscription = await tx.subscription.update({
@@ -220,7 +224,7 @@ adminRouter.post(
           data: {
             packageId: payment.packageId,
             status: "ACTIVE",
-            endsAt: addMonths(current.endsAt, payment.package.months),
+            endsAt: extend(current.endsAt),
           },
         });
       } else {
@@ -230,7 +234,7 @@ adminRouter.post(
             packageId: payment.packageId,
             status: "ACTIVE",
             startsAt: now,
-            endsAt: addMonths(now, payment.package.months),
+            endsAt: extend(now),
           },
         });
       }
@@ -246,7 +250,7 @@ adminRouter.post(
         include: { package: true, shop: true },
       });
 
-      return { payment: updated, subscription };
+      return { payment: updated, subscription, daysGranted: extendByDays };
     });
 
     res.json(result);
