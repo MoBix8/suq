@@ -13,10 +13,6 @@ class AppConfig {
   static String get apiBaseUrl {
     const override = String.fromEnvironment('SUQ_API', defaultValue: '');
     if (override.isNotEmpty) return override;
-    if (kIsWeb) return 'http://localhost:4000';
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:4000';
-    }
-    return 'http://localhost:4000';
+    return 'https://server-xi-ten-61.vercel.app';
   }
 }

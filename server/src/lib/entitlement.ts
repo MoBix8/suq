@@ -18,12 +18,16 @@ let cachedKey: crypto.KeyObject | null = null;
 
 function privateKey(): crypto.KeyObject {
   if (!cachedKey) {
-    if (!fs.existsSync(env.entitlementPrivateKeyPath)) {
-      throw new Error(
-        `Entitlement private key not found at ${env.entitlementPrivateKeyPath}. Run "npm run keys".`,
-      );
+    if (env.entitlementPrivateKeyPem) {
+      cachedKey = crypto.createPrivateKey(env.entitlementPrivateKeyPem);
+    } else {
+      if (!fs.existsSync(env.entitlementPrivateKeyPath)) {
+        throw new Error(
+          `Entitlement private key not found at ${env.entitlementPrivateKeyPath}. Run "npm run keys".`,
+        );
+      }
+      cachedKey = crypto.createPrivateKey(fs.readFileSync(env.entitlementPrivateKeyPath));
     }
-    cachedKey = crypto.createPrivateKey(fs.readFileSync(env.entitlementPrivateKeyPath));
   }
   return cachedKey;
 }

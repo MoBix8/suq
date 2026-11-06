@@ -10,5 +10,6 @@ export const env = {
   entitlementPrivateKeyPath: path.resolve(
     process.env.ENTITLEMENT_PRIVATE_KEY_PATH ?? "./keys/entitlement-private.pem",
   ),
+  entitlementPrivateKeyPem: process.env.ENTITLEMENT_PRIVATE_KEY ?? null,
   leaseDays: Number.isFinite(leaseDays) && leaseDays > 0 ? leaseDays : 7,
 };

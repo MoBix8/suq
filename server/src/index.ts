@@ -13,7 +13,7 @@ import { publicRouter } from "./routes/public";
 import { exportImportRouter } from "./routes/exportImport";
 import { syncRouter } from "./routes/sync";
 
-const app = express();
+export const app = express();
 
 app.use(helmet());
 app.use(
@@ -47,7 +47,11 @@ app.use("/api/admin", exportImportRouter);
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(env.port, () => {
-  console.log(`SUQ API listening on http://localhost:${env.port}`);
-  console.log(`Entitlement public key: ${entitlementPublicKeyBase64()}`);
-});
+// Only listen when run directly (local dev). On Vercel/serverless, the app
+// is exported and invoked by the platform.
+if (require.main === module) {
+  app.listen(env.port, () => {
+    console.log(`SUQ API listening on http://localhost:${env.port}`);
+    console.log(`Entitlement public key: ${entitlementPublicKeyBase64()}`);
+  });
+}
