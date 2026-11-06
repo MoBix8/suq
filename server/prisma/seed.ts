@@ -526,51 +526,6 @@ async function main() {
     });
   }
 
-  // Give the demo owner an active 30-day subscription so the shop app is usable.
-  if (owner.shop) {
-    const active = await prisma.subscription.findFirst({
-      where: { shopId: owner.shop.id, status: "ACTIVE", endsAt: { gt: new Date() } },
-    });
-    if (!active) {
-      const pkg = await prisma.package.findUnique({ where: { code: "pkg_1m" } });
-      if (pkg) {
-        const startsAt = new Date();
-        const endsAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000);
-        await prisma.subscription.create({
-          data: {
-            shopId: owner.shop.id,
-            packageId: pkg.id,
-            status: "ACTIVE",
-            startsAt,
-            endsAt,
-          },
-        });
-      }
-    }
-  }
-
-  // A pending payment for the admin queue.
-  if (pendingOwner.shop) {
-    const pkg = await prisma.package.findUnique({ where: { code: "pkg_3m" } });
-    const bank = await prisma.bankAccount.findUnique({ where: { code: "bank_cbe" } });
-    if (pkg && bank) {
-      const existing = await prisma.payment.findUnique({ where: { transactionRef: "FT24DEMO0001" } });
-      if (!existing) {
-        await prisma.payment.create({
-          data: {
-            shopId: pendingOwner.shop.id,
-            packageId: pkg.id,
-            bankAccountId: bank.id,
-            amountEtb: pkg.priceEtb,
-            transactionRef: "FT24DEMO0001",
-            note: "Paid via CBE mobile banking",
-            status: "PENDING",
-          },
-        });
-      }
-    }
-  }
-
   console.log(`Seeded ${products.length} products, ${categories.length} categories.`);
   console.log("Admin: 0900000000 / 1234");
   console.log(`Admin id: ${admin.id}`);
