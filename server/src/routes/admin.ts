@@ -9,6 +9,55 @@ import { phoneSchema, pinSchema, slugify } from "../lib/phone";
 import { prisma } from "../prisma";
 
 export const adminRouter = Router();
+adminRouter.use(requireAdmin);
+  "/admins/:id",
+  asyncHandler(async (req, res) => {
+    const body = z.object({
+      name: z.string().trim().min(2).max(80).optional(),
+      phone: phoneSchema.optional(),
+      pin: pinSchema.optional(),
+    }).parse(req.body);
+
+    const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.role !== "ADMIN") throw new AppError(404, "Admin not found");
+
+    if (body.phone && body.phone !== existing.phone) {
+      const dup = await prisma.user.findUnique({ where: { phone: body.phone } });
+      if (dup) throw new AppError(409, "An account with this phone already exists");
+    }
+
+    const data: Record<string, unknown> = {};
+    if (body.name) data.name = body.name;
+    if (body.phone) data.phone = body.phone;
+    if (body.pin) data.pinHash = await bcrypt.hash(body.pin, 10);
+
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data,
+      select: { id: true, phone: true, name: true },
+    });
+    res.json({ user });
+  }),
+);
+
+adminRouter.delete(
+  "/admins/:id",
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.role !== "ADMIN") throw new AppError(404, "Admin not found");
+
+    const count = await prisma.user.count({ where: { role: "ADMIN" } });
+    if (count <= 1) throw new AppError(409, "Cannot delete the last admin account.");
+
+    // Prevent self-deletion.
+    if (req.auth?.userId === req.params.id) {
+      throw new AppError(409, "You cannot delete your own account.");
+    }
+
+    await prisma.user.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  }),
+);
 
 // ─── Admin users ─────────────────────────────────────────────────────────────
 
@@ -47,8 +96,6 @@ adminRouter.get(
     res.json({ admins });
   }),
 );
-
-adminRouter.use(requireAdmin);
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 

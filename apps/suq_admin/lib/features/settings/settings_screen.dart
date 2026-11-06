@@ -22,6 +22,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _saving = false;
   bool _hasSavedKey = false;
 
+  List<Map<String, dynamic>> _admins = [];
+  bool _adminsLoading = false;
+  bool _creatingAdmin = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,6 +36,128 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _loading = false;
       });
     });
+    _loadAdmins();
+  }
+
+  Future<void> _editAdmin(Map<String, dynamic> admin) async {
+    final nameCtrl = TextEditingController(text: admin['name'] as String? ?? '');
+    final phoneCtrl = TextEditingController(text: admin['phone'] as String? ?? '');
+    final pinCtrl = TextEditingController();
+    String? error;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit admin account'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'Full name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'Phone number'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pinCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'New PIN (leave blank to keep)'),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(error!, style: const TextStyle(color: AdminColors.danger, fontSize: 12.5)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  final body = <String, dynamic>{};
+                  final name = nameCtrl.text.trim();
+                  final phone = phoneCtrl.text.trim();
+                  final pin = pinCtrl.text.trim();
+                  if (name.isNotEmpty) body['name'] = name;
+                  if (phone.isNotEmpty) body['phone'] = phone;
+                  if (pin.isNotEmpty) body['pin'] = pin;
+                  final api = ProviderScope.containerOf(dialogContext).read(apiProvider);
+                  await api.patch('/admin/admins/${admin['id']}', body: body);
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
+                } on ApiException catch (e) {
+                  setDialogState(() => error = e.message);
+                } catch (e) {
+                  setDialogState(() => error = e.toString());
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    phoneCtrl.dispose();
+    pinCtrl.dispose();
+    if (result == true && mounted) {
+      showAppSnack(context, 'Admin updated.');
+      _loadAdmins();
+    }
+  }
+
+  Future<void> _deleteAdmin(Map<String, dynamic> admin) async {
+    final confirmed = await confirmAction(
+      context,
+      title: 'Delete ${admin['name']}?',
+      message: 'This permanently removes the admin account.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    try {
+      final api = ProviderScope.containerOf(context).read(apiProvider);
+      await api.delete('/admin/admins/${admin['id']}');
+      if (mounted) {
+        showAppSnack(context, 'Admin deleted.');
+        _loadAdmins();
+      }
+    } on ApiException catch (e) {
+      if (mounted) showAppSnack(context, e.message, error: true);
+    } catch (e) {
+      if (mounted) showAppSnack(context, e.toString(), error: true);
+    }
+  }
+
+  Future<void> _loadAdmins() async {
+    setState(() => _adminsLoading = true);
+    try {
+      final api = ProviderScope.containerOf(context).read(apiProvider);
+      final response = await api.get('/admin/admins');
+      final list = response['admins'] as List<dynamic>? ?? [];
+      if (mounted) {
+        setState(() {
+          _admins = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+          _adminsLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _adminsLoading = false);
+    }
   }
 
   @override
@@ -73,6 +199,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _createAdmin() async {
+    setState(() => _creatingAdmin = true);
+    // ... existing dialog code ...
+  }
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final pinCtrl = TextEditingController();
@@ -159,10 +288,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     nameCtrl.dispose();
     phoneCtrl.dispose();
     pinCtrl.dispose();
+    if (mounted) setState(() => _creatingAdmin = false);
     if (result == true && mounted) {
       showAppSnack(context, 'Admin account created.');
+      _loadAdmins();
     }
   }
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: _loading
@@ -225,7 +358,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
-              ],
               const SizedBox(height: 24),
               const Text(
                 'Admin accounts',
@@ -243,14 +375,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 18),
               SectionCard(
-                child: FilledButton.icon(
-                  onPressed: _createAdmin,
-                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 19),
-                  label: const Text('Create admin account'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_adminsLoading)
+                      const Center(child: CircularProgressIndicator())
+                    else if (_admins.isEmpty)
+                      const Text('No admin accounts.', style: TextStyle(color: AdminColors.muted))
+                    else
+                      ..._admins.map((admin) => _AdminRow(
+                            admin: admin,
+                            onEdit: () => _editAdmin(admin),
+                            onDelete: () => _deleteAdmin(admin),
+                          )),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _creatingAdmin ? null : _createAdmin,
+                      icon: _creatingAdmin
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.person_add_alt_1_rounded, size: 19),
+                      label: Text(_creatingAdmin ? 'Creating…' : 'Create admin account'),
+                    ),
+                  ],
                 ),
               ),
             ],
             ),
+    );
+  }
+}
+
+class _AdminRow extends StatelessWidget {
+  const _AdminRow({
+    required this.admin,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final Map<String, dynamic> admin;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: AdminColors.seed.withValues(alpha: 0.1),
+            child: Text(
+              (admin['name'] as String? ?? '?').substring(0, 1).toUpperCase(),
+              style: const TextStyle(color: AdminColors.seed, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  admin['name'] as String? ?? '',
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  admin['phone'] as String? ?? '',
+                  style: const TextStyle(fontSize: 11.5, color: AdminColors.muted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Edit',
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 19),
+          ),
+          IconButton(
+            tooltip: 'Delete',
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AdminColors.danger),
+          ),
+        ],
+      ),
     );
   }
 }
