@@ -8,6 +8,6 @@ class AdminConfig {
   static String get apiBaseUrl {
     const override = String.fromEnvironment('SUQ_API', defaultValue: '');
     if (override.isNotEmpty) return override;
-    return 'https://server-xi-ten-61.vercel.app';
+    return 'https://server-gules-rho-94.vercel.app';
   }
 }
