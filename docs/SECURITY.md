@@ -59,10 +59,14 @@ server issues a fresh lease if the subscription is still valid.
 ### 6. Authentication
 
 - Phone + PIN, hashed with bcrypt (cost 10+).
-- JWT with role and shop claims, signed by `JWT_SECRET`.
+- JWT with role, shop, and device claims, signed by `JWT_SECRET`.
 - Admin routes require `role === 'ADMIN'`.
-- Production: HTTPS only, rate-limit login and payment submission, add a
-  device-binding claim if needed.
+- Owner accounts are bound to one `deviceId` (`Shop.boundDeviceId`). Login and
+  registration claim the device; catalog, billing, entitlement, and sync routes
+  run `requireBoundDevice` and reject a mismatched token. Admins can reset the
+  binding from the admin app.
+- Production: HTTPS only, rate-limit login and payment submission, and consider
+  Play Integrity / App Attest for stronger device identity.
 
 ### 7. Data protection
 
@@ -77,7 +81,9 @@ server issues a fresh lease if the subscription is still valid.
 - A user who keeps the phone clock frozen and never restarts the app for longer
   than the lease. (The lease still expires by wall clock; freezing is an edge
   case. Play Integrity closes it.)
-- A user who shares their login. Add device limits per shop in v1.2.
+- A user who copies the app's local `device.id` value to another phone. Device
+  binding blocks normal multi-device use, but it is not hardware attestation.
+  Play Integrity / App Attest is the stronger fix.
 
 ## Production checklist
 

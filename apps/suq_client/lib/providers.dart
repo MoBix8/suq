@@ -11,6 +11,7 @@ import 'core/entitlement.dart';
 import 'core/trusted_clock.dart';
 import 'data/database.dart';
 import 'data/models.dart';
+import 'data/repositories/cache_repository.dart';
 import 'data/repositories/customer_repository.dart';
 import 'data/repositories/library_repository.dart';
 import 'data/repositories/product_repository.dart';
@@ -55,7 +56,14 @@ final salesRepositoryProvider = Provider<SalesRepository>(
 );
 
 final libraryRepositoryProvider = Provider<LibraryRepository>(
-  (ref) => LibraryRepository(ref.watch(apiProvider)),
+  (ref) => LibraryRepository(
+    ref.watch(apiProvider),
+    ref.watch(databaseProvider),
+  ),
+);
+
+final cacheRepositoryProvider = Provider<CacheRepository>(
+  (ref) => CacheRepository(ref.watch(databaseProvider)),
 );
 
 final syncRepositoryProvider = Provider<SyncRepository>(
@@ -120,7 +128,11 @@ class SessionController extends Notifier<SessionState> {
     final api = ref.read(apiProvider);
     final response = await api.post(
       '/auth/login',
-      body: {'phone': phone.trim(), 'pin': pin},
+      body: {
+        'phone': phone.trim(),
+        'pin': pin,
+        'deviceId': ref.read(deviceIdProvider),
+      },
     );
     await _applyAuth(response);
   }
@@ -140,6 +152,7 @@ class SessionController extends Notifier<SessionState> {
         'shopName': shopName.trim(),
         'phone': phone.trim(),
         'pin': pin,
+        'deviceId': ref.read(deviceIdProvider),
         if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
       },
     );
@@ -418,13 +431,93 @@ final libraryCategoriesProvider = FutureProvider<List<LibraryCategory>>(
   (ref) => ref.watch(libraryRepositoryProvider).categories(),
 );
 
-final libraryProductsProvider =
-    FutureProvider.family<List<LibraryProduct>, String?>((ref, categoryId) {
-  return ref.watch(libraryRepositoryProvider).products(categoryId: categoryId);
-});
+final libraryFeedProvider = AsyncNotifierProvider.family<LibraryFeedController,
+    LibraryFeedState, LibraryFeedQuery>(
+  LibraryFeedController.new,
+);
+
+class LibraryFeedController extends AsyncNotifier<LibraryFeedState> {
+  LibraryFeedController(this.query);
+
+  final LibraryFeedQuery query;
+  static const _pageSize = 40;
+
+  @override
+  Future<LibraryFeedState> build() async {
+    final page = await ref.watch(libraryRepositoryProvider).products(
+          categoryId: query.categoryId,
+          search: query.search,
+          page: 1,
+          pageSize: _pageSize,
+        );
+    return LibraryFeedState(
+      items: page.items,
+      total: page.total,
+      page: page.page,
+      pageSize: page.pageSize,
+    );
+  }
+
+  Future<void> loadMore() async {
+    final current = state.asData?.value;
+    if (current == null || !current.hasMore) return;
+
+    final page = await ref.read(libraryRepositoryProvider).products(
+          categoryId: query.categoryId,
+          search: query.search,
+          page: current.page + 1,
+          pageSize: current.pageSize,
+        );
+    final seen = current.items.map((item) => item.id).toSet();
+    state = AsyncData(
+      current.copyWith(
+        items: [
+          ...current.items,
+          ...page.items.where((item) => !seen.contains(item.id)),
+        ],
+        total: page.total,
+        page: page.page,
+        pageSize: page.pageSize,
+      ),
+    );
+  }
+
+  Future<List<LibraryProduct>> allMatching() {
+    return ref.read(libraryRepositoryProvider).allProducts(
+          categoryId: query.categoryId,
+          search: query.search,
+        );
+  }
+}
+
+bool _isAuthError(Object error) =>
+    error is ApiException &&
+    (error.statusCode == 401 || error.statusCode == 403);
+
+/// Reads from the network and stores the response locally. When the device is
+/// offline the last successful response is used instead.
+Future<Map<String, dynamic>> _cachedGet(
+  Ref ref,
+  String path,
+  String cacheKey, {
+  Map<String, dynamic>? query,
+}) async {
+  final api = ref.watch(apiProvider);
+  final cache = ref.watch(cacheRepositoryProvider);
+  try {
+    final response = await api.get(path, query: query);
+    await cache.write(cacheKey, response);
+    return response;
+  } catch (error) {
+    if (_isAuthError(error)) rethrow;
+    final cached = await cache.read(cacheKey);
+    if (cached != null) return cached;
+    rethrow;
+  }
+}
 
 final packagesProvider = FutureProvider<List<PackagePlan>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/packages');
+  final response = await _cachedGet(ref, '/packages', 'packages');
   final list = response['packages'] as List<dynamic>? ?? [];
   return list
       .whereType<Map>()
@@ -433,16 +526,23 @@ final packagesProvider = FutureProvider<List<PackagePlan>>((ref) async {
 });
 
 final banksProvider = FutureProvider<List<BankAccount>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/bank-accounts');
+  final response = await _cachedGet(ref, '/bank-accounts', 'bank-accounts');
   final list = response['accounts'] as List<dynamic>? ?? [];
-  return list
+  final accounts = list
       .whereType<Map>()
       .map((item) => BankAccount.fromJson(Map<String, dynamic>.from(item)))
       .toList();
+  accounts.shuffle();
+  return accounts;
 });
 
 final paymentsProvider = FutureProvider<List<PaymentRecord>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/payments/mine');
+  final shopId = ref.watch(sessionProvider).shop?.id ?? 'anonymous';
+  final response = await _cachedGet(
+    ref,
+    '/payments/mine',
+    'payments.mine.$shopId',
+  );
   final list = response['payments'] as List<dynamic>? ?? [];
   return list
       .whereType<Map>()
@@ -452,6 +552,10 @@ final paymentsProvider = FutureProvider<List<PaymentRecord>>((ref) async {
 
 final pendingSyncProvider = FutureProvider<int>(
   (ref) => ref.watch(syncRepositoryProvider).pendingCount(),
+);
+
+final salesHistoryProvider = FutureProvider<List<SaleRecord>>(
+  (ref) => ref.read(salesRepositoryProvider).recent(limit: 200),
 );
 
 // ─── Multi-cart ──────────────────────────────────────────────────────────────

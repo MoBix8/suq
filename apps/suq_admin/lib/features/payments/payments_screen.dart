@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/pager.dart';
 import '../../widgets/payment_tile.dart';
 
 class PaymentsScreen extends ConsumerStatefulWidget {
@@ -25,6 +26,8 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   ];
 
   String? _status = 'PENDING';
+  String? _bankFilter;
+  int _page = 1;
   final Set<String> _busy = {};
 
   Future<void> _refresh() async {
@@ -93,7 +96,11 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final payments = ref.watch(paymentsProvider(_status));
+    final payments = ref.watch(
+      paymentsProvider(
+        PaymentQuery(status: _status, bankAccountId: _bankFilter, page: _page),
+      ),
+    );
 
     return Column(
       children: [
@@ -143,18 +150,62 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                   ChoiceChip(
                     label: Text(filter.$2),
                     selected: _status == filter.$1,
-                    onSelected: (_) => setState(() => _status = filter.$1),
+                    onSelected: (_) => setState(() {
+                        _status = filter.$1;
+                        _page = 1;
+                      }),
                   ),
               ],
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Consumer(
+                  builder: (context, ref, _) {
+                    final banks = ref.watch(banksProvider);
+                    final accounts = banks.asData?.value ?? const <BankAccount>[];
+                    return DropdownButtonFormField<String?>(
+                      value: _bankFilter,
+                      decoration: const InputDecoration(
+                        labelText: 'Account',
+                        isDense: true,
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('All accounts'),
+                        ),
+                        for (final account in accounts)
+                          DropdownMenuItem<String?>(
+                            value: account.id,
+                            child: Text(
+                              '${account.bankName} · ${account.accountNumber}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) => setState(() {
+                        _bankFilter = value;
+                        _page = 1;
+                      }),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
         Expanded(
-          child: AsyncValueView<List<PaymentRecord>>(
+          child: AsyncValueView<PagedPayments>(
             value: payments,
             onRetry: _refresh,
             loadingMessage: 'Loading payments…',
-            builder: (records) {
+            builder: (pageData) {
+              final records = pageData.items;
               if (records.isEmpty) {
                 return EmptyState(
                   icon: Icons.receipt_long_rounded,
@@ -172,8 +223,16 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
 
               return RefreshIndicator(
                 onRefresh: () async {
-                  ref.invalidate(paymentsProvider(_status));
-                  await ref.read(paymentsProvider(_status).future);
+                  ref.invalidate(
+                    paymentsProvider(
+                      PaymentQuery(status: _status, bankAccountId: _bankFilter, page: _page),
+                    ),
+                  );
+                  await ref.read(
+                    paymentsProvider(
+                      PaymentQuery(status: _status, bankAccountId: _bankFilter, page: _page),
+                    ).future,
+                  );
                 },
                 child: ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -218,6 +277,18 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
             },
           ),
         ),
+        if (payments.asData?.value != null)
+          CatalogPager(
+            page: payments.asData!.value!.page,
+            pageSize: payments.asData!.value!.pageSize,
+            total: payments.asData!.value!.total,
+            onPrevious: payments.asData!.value!.page > 1
+                ? () => setState(() => _page -= 1)
+                : null,
+            onNext: payments.asData!.value!.hasMore
+                ? () => setState(() => _page += 1)
+                : null,
+          ),
       ],
     );
   }

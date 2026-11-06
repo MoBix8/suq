@@ -7,15 +7,20 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/export_import.dart';
+import '../../widgets/pager.dart';
 
-class CategoriesTab extends ConsumerWidget {
+class CategoriesTab extends ConsumerStatefulWidget {
   const CategoriesTab({super.key});
 
-  Future<void> _openEditor(
-    BuildContext context,
-    WidgetRef ref, {
-    LibraryCategory? category,
-  }) async {
+  @override
+  ConsumerState<CategoriesTab> createState() => _CategoriesTabState();
+}
+
+class _CategoriesTabState extends ConsumerState<CategoriesTab> {
+  int _page = 1;
+
+  Future<void> _openEditor({LibraryCategory? category}) async {
     final draft = await showDialog<_CategoryDraft>(
       context: context,
       builder: (context) => _CategoryDialog(category: category),
@@ -30,22 +35,20 @@ class CategoriesTab extends ConsumerWidget {
         await api.patch('/admin/library/categories/${category.id}', body: draft.toJson());
       }
       ref.invalidate(categoriesProvider);
+      ref.invalidate(allCategoriesProvider);
       ref.invalidate(libraryProductsProvider);
-      if (context.mounted) {
+      if (mounted) {
+        if (category == null) setState(() => _page = 1);
         showAppSnack(context, category == null ? 'Category created.' : 'Category updated.');
       }
     } on ApiException catch (error) {
-      if (context.mounted) showAppSnack(context, error.message, error: true);
+      if (mounted) showAppSnack(context, error.message, error: true);
     } catch (error) {
-      if (context.mounted) showAppSnack(context, error.toString(), error: true);
+      if (mounted) showAppSnack(context, error.toString(), error: true);
     }
   }
 
-  Future<void> _delete(
-    BuildContext context,
-    WidgetRef ref,
-    LibraryCategory category,
-  ) async {
+  Future<void> _delete(LibraryCategory category) async {
     final confirmed = await confirmAction(
       context,
       title: 'Delete ${category.name}?',
@@ -59,118 +62,170 @@ class CategoriesTab extends ConsumerWidget {
     try {
       await ref.read(apiProvider).delete('/admin/library/categories/${category.id}');
       ref.invalidate(categoriesProvider);
-      if (context.mounted) showAppSnack(context, 'Category deleted.');
+      ref.invalidate(allCategoriesProvider);
+      ref.invalidate(libraryProductsProvider);
+      if (mounted) showAppSnack(context, 'Category deleted.');
     } on ApiException catch (error) {
-      if (context.mounted) showAppSnack(context, error.message, error: true);
+      if (mounted) showAppSnack(context, error.message, error: true);
     } catch (error) {
-      if (context.mounted) showAppSnack(context, error.toString(), error: true);
+      if (mounted) showAppSnack(context, error.toString(), error: true);
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final categories = ref.watch(categoriesProvider);
+  Widget build(BuildContext context) {
+    final categories = ref.watch(categoriesProvider(_page));
 
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Groups used to organise the shared product library.',
-                  style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
-                ),
+              const Text(
+                'Groups used to organise the shared product library.',
+                style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
               ),
-              FilledButton.icon(
-                onPressed: () => _openEditor(context, ref),
-                icon: const Icon(Icons.add_rounded, size: 19),
-                label: const Text('New category'),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _openEditor(),
+                    icon: const Icon(Icons.add_rounded, size: 19),
+                    label: const Text('New category'),
+                  ),
+                  ExportImportButtons(
+                    exportPath: '/admin/export/categories',
+                    importPath: '/admin/import/categories',
+                    onImported: () {
+                      ref.invalidate(categoriesProvider);
+                      ref.invalidate(allCategoriesProvider);
+                      ref.invalidate(libraryProductsProvider);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
         ),
         Expanded(
-          child: AsyncValueView<List<LibraryCategory>>(
+          child: AsyncValueView<PagedLibraryCategories>(
             value: categories,
-            onRetry: () => ref.invalidate(categoriesProvider),
+            onRetry: () => ref.invalidate(categoriesProvider(_page)),
             loadingMessage: 'Loading categories…',
-            builder: (records) {
+            builder: (pageData) {
+              final records = pageData.items;
               if (records.isEmpty) {
-                return const EmptyState(
-                  icon: Icons.category_rounded,
-                  title: 'No categories',
-                  message: 'Create a category before adding library products.',
+                return Column(
+                  children: [
+                    const Expanded(
+                      child: EmptyState(
+                        icon: Icons.category_rounded,
+                        title: 'No categories',
+                        message: 'Create a category before adding library products.',
+                      ),
+                    ),
+                    CatalogPager(
+                      page: pageData.page,
+                      pageSize: pageData.pageSize,
+                      total: pageData.total,
+                      onPrevious: pageData.page > 1
+                          ? () => setState(() => _page -= 1)
+                          : null,
+                      onNext: pageData.hasMore
+                          ? () => setState(() => _page += 1)
+                          : null,
+                    ),
+                  ],
                 );
               }
 
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                itemCount: records.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final category = records[index];
-                  return SectionCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(9),
-                          decoration: BoxDecoration(
-                            color: AdminColors.seed.withValues(alpha: 0.09),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(
-                            Icons.category_rounded,
-                            size: 18,
-                            color: AdminColors.seed,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      itemCount: records.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final category = records[index];
+                        return SectionCard(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          child: Row(
                             children: [
-                              Text(
-                                category.name,
-                                style: const TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AdminColors.ink,
+                              Container(
+                                padding: const EdgeInsets.all(9),
+                                decoration: BoxDecoration(
+                                  color: AdminColors.seed.withValues(alpha: 0.09),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.category_rounded,
+                                  size: 18,
+                                  color: AdminColors.seed,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${category.productCount} product${category.productCount == 1 ? '' : 's'} · '
-                                'sort ${category.sortOrder}'
-                                '${(category.slug ?? '').isEmpty ? '' : ' · ${category.slug}'}',
-                                style: const TextStyle(
-                                  fontSize: 11.5,
-                                  color: AdminColors.muted,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      category.name,
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: AdminColors.ink,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${category.productCount} product${category.productCount == 1 ? '' : 's'} · '
+                                      'sort ${category.sortOrder}'
+                                      '${(category.slug ?? '').isEmpty ? '' : ' · ${category.slug}'}',
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        color: AdminColors.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Edit',
+                                onPressed: () => _openEditor(category: category),
+                                icon: const Icon(Icons.edit_outlined, size: 19),
+                              ),
+                              IconButton(
+                                tooltip: 'Delete',
+                                onPressed: () => _delete(category),
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 19,
+                                  color: AdminColors.danger,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        IconButton(
-                          tooltip: 'Edit',
-                          onPressed: () => _openEditor(context, ref, category: category),
-                          icon: const Icon(Icons.edit_outlined, size: 19),
-                        ),
-                        IconButton(
-                          tooltip: 'Delete',
-                          onPressed: () => _delete(context, ref, category),
-                          icon: const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 19,
-                            color: AdminColors.danger,
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                  CatalogPager(
+                    page: pageData.page,
+                    pageSize: pageData.pageSize,
+                    total: pageData.total,
+                    onPrevious: pageData.page > 1
+                        ? () => setState(() => _page -= 1)
+                        : null,
+                    onNext: pageData.hasMore
+                        ? () => setState(() => _page += 1)
+                        : null,
+                  ),
+                ],
               );
             },
           ),

@@ -94,6 +94,8 @@ class ProductRepository {
           id: const Uuid().v4(),
           libraryItemId: item.id,
           name: item.name,
+          nameAm: item.nameAm,
+          nameOr: item.nameOr,
           barcode: item.barcode,
           unit: item.unit,
           sellingPrice: item.defaultSellingPrice,

@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 class AdminConfig {
-  static const String appName = 'SUQ Admin';
+  static const String appName = 'SUQ ADMIN';
   static const String version = '1.0.0';
 
   /// Base host only. [ApiClient] prefixes every request with `/api`.

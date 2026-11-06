@@ -13,12 +13,50 @@ class AppDatabase {
     return database;
   }
 
+  static const _cacheTables = <String>[
+    '''
+      CREATE TABLE IF NOT EXISTS library_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        product_count INTEGER NOT NULL DEFAULT 0,
+        cached_at TEXT NOT NULL
+      )
+    ''',
+    '''
+      CREATE TABLE IF NOT EXISTS library_products (
+        id TEXT PRIMARY KEY,
+        sku TEXT NOT NULL,
+        category_id TEXT NOT NULL,
+        category_name TEXT NOT NULL,
+        name TEXT NOT NULL,
+        name_am TEXT,
+        barcode TEXT,
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        default_selling_price REAL NOT NULL,
+        default_buying_price REAL,
+        version INTEGER NOT NULL DEFAULT 1,
+        cached_at TEXT NOT NULL
+      )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_library_products_category ON library_products(category_id)',
+    'CREATE INDEX IF NOT EXISTS idx_library_products_name ON library_products(name)',
+    '''
+      CREATE TABLE IF NOT EXISTS api_cache (
+        key TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        cached_at TEXT NOT NULL
+      )
+    ''',
+  ];
+
   Future<void> init() async {
     final directory = await getApplicationSupportDirectory();
     final path = p.join(directory.path, 'suq_local.db');
     _db = await openDatabase(
       path,
-      version: 1,
+      version: 5,
       onCreate: (db, version) async {
         final batch = db.batch();
         batch.execute('''
@@ -26,6 +64,8 @@ class AppDatabase {
             id TEXT PRIMARY KEY,
             library_item_id TEXT,
             name TEXT NOT NULL,
+            name_am TEXT,
+            name_or TEXT,
             barcode TEXT,
             unit TEXT NOT NULL DEFAULT 'pcs',
             selling_price REAL NOT NULL,
@@ -71,6 +111,7 @@ class AppDatabase {
             profit REAL NOT NULL DEFAULT 0,
             payment_method TEXT NOT NULL,
             sold_at TEXT NOT NULL,
+            returned INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
           )
         ''');
@@ -119,7 +160,42 @@ class AppDatabase {
             attempts INTEGER NOT NULL DEFAULT 0
           )
         ''');
+
+        for (final statement in _cacheTables) {
+          batch.execute(statement);
+        }
+
         await batch.commit(noResult: true);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          final batch = db.batch();
+          for (final statement in _cacheTables) {
+            batch.execute(statement);
+          }
+          await batch.commit(noResult: true);
+        }
+        if (oldVersion < 3) {
+          try {
+            await db.execute('ALTER TABLE products ADD COLUMN name_am TEXT');
+          } catch (_) {}
+          try {
+            await db.execute('ALTER TABLE library_products ADD COLUMN name_am TEXT');
+          } catch (_) {}
+        }
+        if (oldVersion < 4) {
+          try {
+            await db.execute('ALTER TABLE products ADD COLUMN name_or TEXT');
+          } catch (_) {}
+          try {
+            await db.execute('ALTER TABLE library_products ADD COLUMN name_or TEXT');
+          } catch (_) {}
+        }
+        if (oldVersion < 5) {
+          try {
+            await db.execute('ALTER TABLE sales ADD COLUMN returned INTEGER NOT NULL DEFAULT 0');
+          } catch (_) {}
+        }
       },
     );
   }

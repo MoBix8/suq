@@ -68,6 +68,7 @@ class ShopRecord {
     this.salesCount = 0,
     this.customersCount = 0,
     this.paymentsCount = 0,
+    this.deviceBound = false,
     this.subscription,
   });
 
@@ -81,6 +82,7 @@ class ShopRecord {
   final int salesCount;
   final int customersCount;
   final int paymentsCount;
+  final bool deviceBound;
   final SubscriptionSummary? subscription;
 
   bool get active => subscription?.active == true;
@@ -100,6 +102,7 @@ class ShopRecord {
       salesCount: counts is Map ? asInt(counts['sales']) : 0,
       customersCount: counts is Map ? asInt(counts['customers']) : 0,
       paymentsCount: counts is Map ? asInt(counts['payments']) : 0,
+      deviceBound: json['deviceBound'] as bool? ?? false,
       subscription: sub is Map
           ? SubscriptionSummary.fromJson(Map<String, dynamic>.from(sub))
           : null,
@@ -125,6 +128,7 @@ class PaymentRecord {
     this.packageMonths = 0,
     this.bankName,
     this.bankAccountNumber,
+    this.bankAccountId,
   });
 
   final String id;
@@ -143,6 +147,7 @@ class PaymentRecord {
   final int packageMonths;
   final String? bankName;
   final String? bankAccountNumber;
+  final String? bankAccountId;
 
   bool get pending => status == 'PENDING';
   bool get approved => status == 'APPROVED';
@@ -170,6 +175,7 @@ class PaymentRecord {
       packageMonths: pkg is Map ? asInt(pkg['months']) : 0,
       bankName: bank is Map ? bank['bankName'] as String? : null,
       bankAccountNumber: bank is Map ? bank['accountNumber'] as String? : null,
+      bankAccountId: bank is Map ? bank['id'] as String? : null,
     );
   }
 }
@@ -286,6 +292,8 @@ class LibraryProduct {
     required this.categoryId,
     required this.categoryName,
     required this.name,
+    this.nameAm,
+    this.nameOr,
     this.barcode,
     required this.unit,
     required this.defaultSellingPrice,
@@ -299,6 +307,8 @@ class LibraryProduct {
   final String categoryId;
   final String categoryName;
   final String name;
+  final String? nameAm;
+  final String? nameOr;
   final String? barcode;
   final String unit;
   final double defaultSellingPrice;
@@ -314,6 +324,8 @@ class LibraryProduct {
       categoryId: asString(json['categoryId']),
       categoryName: category is Map ? asString(category['name']) : '',
       name: asString(json['name']),
+      nameAm: json['nameAm'] as String?,
+      nameOr: json['nameOr'] as String?,
       barcode: json['barcode'] as String?,
       unit: asString(json['unit']).isEmpty ? 'pcs' : asString(json['unit']),
       defaultSellingPrice: asDouble(json['defaultSellingPrice']),
@@ -375,6 +387,40 @@ class ExpiringShop {
         packageName: asString(json['packageName']),
         endsAt: asDateOrNull(json['endsAt']),
       );
+}
+
+class PagedLibraryCategories {
+  const PagedLibraryCategories({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+  });
+
+  final List<LibraryCategory> items;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  bool get hasMore => page * pageSize < total;
+  int get pageCount => total == 0 ? 1 : ((total - 1) ~/ pageSize) + 1;
+}
+
+class PagedLibraryProducts {
+  const PagedLibraryProducts({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+  });
+
+  final List<LibraryProduct> items;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  bool get hasMore => page * pageSize < total;
+  int get pageCount => total == 0 ? 1 : ((total - 1) ~/ pageSize) + 1;
 }
 
 class AdminDashboard {

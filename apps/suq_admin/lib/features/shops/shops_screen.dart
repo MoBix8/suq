@@ -68,6 +68,31 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
     }
   }
 
+  Future<void> _resetDevice(ShopRecord shop) async {
+    final confirmed = await confirmAction(
+      context,
+      title: 'Reset linked device for ${shop.name}?',
+      message:
+          'The current phone will be signed out and the owner can log in from one new device. '
+          'Local shop data on the old phone is kept.',
+      confirmLabel: 'Reset device',
+      destructive: true,
+    );
+    if (!confirmed) return;
+
+    try {
+      await ref.read(apiProvider).post('/admin/shops/${shop.id}/reset-device');
+      ref.invalidate(shopsProvider);
+      if (mounted) {
+        showAppSnack(context, 'Device reset. ${shop.name} can log in on a new phone.');
+      }
+    } on ApiException catch (error) {
+      if (mounted) showAppSnack(context, error.message, error: true);
+    } catch (error) {
+      if (mounted) showAppSnack(context, error.toString(), error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final shops = ref.watch(shopsProvider);
@@ -159,6 +184,7 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
                   itemBuilder: (context, index) => _ShopCard(
                     shop: filtered[index],
                     onGrant: () => _grant(filtered[index]),
+                    onResetDevice: () => _resetDevice(filtered[index]),
                   ),
                 ),
               );
@@ -171,10 +197,15 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
 }
 
 class _ShopCard extends StatelessWidget {
-  const _ShopCard({required this.shop, required this.onGrant});
+  const _ShopCard({
+    required this.shop,
+    required this.onGrant,
+    required this.onResetDevice,
+  });
 
   final ShopRecord shop;
   final VoidCallback onGrant;
+  final VoidCallback onResetDevice;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +267,25 @@ class _ShopCard extends StatelessWidget {
                 color: statusColor,
                 icon: active ? Icons.verified_rounded : Icons.block_rounded,
               ),
+              if (shop.deviceBound)
+                PopupMenuButton<String>(
+                  tooltip: 'Shop actions',
+                  onSelected: (value) {
+                    if (value == 'reset-device') onResetDevice();
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'reset-device',
+                      child: Row(
+                        children: [
+                          Icon(Icons.phonelink_erase_rounded, size: 17),
+                          SizedBox(width: 8),
+                          Text('Reset linked device'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
           const SizedBox(height: 14),

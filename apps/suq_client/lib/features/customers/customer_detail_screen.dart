@@ -490,56 +490,149 @@ class _SalesCard extends StatelessWidget {
             )
           else
             ...sales.map(
-              (sale) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 7),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            sale.receiptNo,
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.2,
-                            ),
+              (sale) => _CustomerSaleTile(sale: sale),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerSaleTile extends ConsumerStatefulWidget {
+  const _CustomerSaleTile({required this.sale});
+
+  final SaleRecord sale;
+
+  @override
+  ConsumerState<_CustomerSaleTile> createState() => _CustomerSaleTileState();
+}
+
+class _CustomerSaleTileState extends ConsumerState<_CustomerSaleTile> {
+  List<SaleItemRecord>? _items;
+  bool _loading = false;
+
+  Future<void> _load() async {
+    if (_items != null) return;
+    setState(() => _loading = true);
+    try {
+      final items = await ref.read(salesRepositoryProvider).itemsForSale(widget.sale.id);
+      if (mounted) {
+        setState(() {
+          _items = items;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sale = widget.sale;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        onExpansionChanged: (expanded) {
+          if (expanded) _load();
+        },
+        title: Text(
+          sale.receiptNo,
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+        ),
+        subtitle: Text(
+          formatDateTime(sale.soldAt),
+          style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(money(sale.total), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+            Text(
+              sale.credit > 0 ? '${money(sale.credit)} on credit' : 'Paid in full',
+              style: TextStyle(
+                fontSize: 10.5,
+                color: sale.credit > 0 ? AppColors.warning : AppColors.muted,
+              ),
+            ),
+          ],
+        ),
+        children: [
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else if (_items == null || _items!.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('No items recorded.', style: TextStyle(color: AppColors.muted)),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Column(
+                children: _items!
+                    .map((item) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${item.name} (${qty(item.qty)} ${item.unit})',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Text(
+                                '${money(item.unitPrice)} × ${qty(item.qty)} = ${money(item.lineTotal)}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                              ),
+                            ],
                           ),
-                          Text(
-                            formatDateTime(sale.soldAt),
-                            style: const TextStyle(
-                              fontSize: 10.5,
-                              color: AppColors.muted,
-                            ),
+                        ))
+                    .toList(),
+              ),
+            ),
+          if (!widget.sale.returned)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Return this sale?'),
+                        content: const Text('Stock will be restocked and credit adjusted.'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            child: const Text('Return'),
                           ),
                         ],
                       ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          money(sale.total),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          sale.credit > 0
-                              ? '${money(sale.credit)} on credit'
-                              : 'Paid in full',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: sale.credit > 0
-                                ? AppColors.warning
-                                : AppColors.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    );
+                    if (confirmed != true) return;
+                    try {
+                      await ref.read(salesRepositoryProvider).returnSale(widget.sale.id);
+                      ref.invalidate(customersProvider);
+                      ref.invalidate(dashboardProvider);
+                      ref.invalidate(reportProvider);
+                      ref.invalidate(salesHistoryProvider);
+                      if (mounted) showAppSnack(context, 'Sale returned.');
+                    } catch (e) {
+                      if (mounted) showAppSnack(context, 'Could not return: $e', error: true);
+                    }
+                  },
+                  icon: const Icon(Icons.undo_rounded, size: 16),
+                  label: const Text('Return'),
                 ),
               ),
             ),
@@ -548,7 +641,6 @@ class _SalesCard extends StatelessWidget {
     );
   }
 }
-
 class _ReceivePaymentDialog extends StatefulWidget {
   const _ReceivePaymentDialog({required this.customer});
 

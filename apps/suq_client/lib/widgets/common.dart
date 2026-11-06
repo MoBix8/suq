@@ -28,11 +28,8 @@ class AppLogo extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(
-        Icons.storefront_rounded,
-        color: Colors.white,
-        size: size * 0.55,
-      ),
+      padding: EdgeInsets.all(size * 0.16),
+      child: Image.asset('assets/branding/qaf_logo.png', fit: BoxFit.contain),
     );
   }
 }

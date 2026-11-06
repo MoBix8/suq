@@ -24,11 +24,12 @@ model Shop {
   id        String   @id @default(cuid())
   userId    String   @unique
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  city      String?
-  subcity   String?
-  phone     String?
-  createdAt DateTime @default(now())
+  name          String
+  city          String?
+  subcity       String?
+  phone         String?
+  boundDeviceId String?
+  createdAt     DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   subscriptions Subscription[]
@@ -146,6 +147,8 @@ model ProductLibraryItem {
   categoryId          String
   category            Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   name                String
+  nameAm              String?
+  nameOr              String?
   barcode             String?
   unit                String   @default("pcs")
   defaultSellingPrice Float
@@ -170,6 +173,8 @@ model ShopProduct {
   libraryItemId     String?
   libraryItem       ProductLibraryItem? @relation(fields: [libraryItemId], references: [id])
   name              String
+  nameAm            String?
+  nameOr            String?
   barcode           String?
   unit              String              @default("pcs")
   sellingPrice      Float
@@ -218,6 +223,7 @@ model Sale {
   cost          Float    @default(0)
   profit        Float    @default(0)
   paymentMethod String
+  returned      Boolean  @default(false)
   soldAt        DateTime
   createdAt     DateTime @default(now())
 

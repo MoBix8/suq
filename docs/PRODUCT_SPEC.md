@@ -46,7 +46,8 @@ transfers, handwritten credit books, and cheap Android phones.
 ## 5. Subscription and activation flow
 
 1. Owner registers with phone, PIN, shop name, city.
-2. Owner sees packages (1, 3, 6, 12 months) and the ETB price.
+2. Owner sees packages (1, 3, 6, 12 months) at **200 ETB per month**
+   (200 / 600 / 1,200 / 2,400 ETB).
 3. Owner selects a package and a bank account (CBE, Telebirr, Awash).
 4. App shows account name, account number, exact amount, and a reference code.
 5. Owner transfers the money and submits the **transaction number**.
@@ -56,6 +57,11 @@ transfers, handwritten credit books, and cheap Android phones.
    signed entitlement lease to the device.
 9. Shop app unlocks. If the previous subscription is still active, the new
    period is appended to its end date (no lost days).
+
+Each owner account is bound to **one device**. Login/registration sends a stable
+device id, and the server rejects the account on any other device. The admin app
+has a **Reset linked device** action for lost or replaced phones; the next login
+claims the new device.
 
 ### Anti-tamper rules
 
@@ -74,10 +80,17 @@ transfers, handwritten credit books, and cheap Android phones.
 - Admin-managed categories and products (Ethiopian staples: teff, berbere, shiro,
   cooking oil, sugar, flour, pasta, coffee, soap, detergent, soft drinks…).
 - Each library item has: name, category, unit, default selling price, optional
-  default buying price, barcode, version.
-- The shop can **download all** or select categories/items.
+  default buying price, barcode, version. The admin product form uses a **unit
+  dropdown** so units stay consistent.
+- Admin category and product lists are paginated, with server-side search and a
+  category filter, so the app never loads every library record at once.
+- The shop can download a category, select items one by one, or tap **Select all**
+  to add every matching product at once. Select-all explicitly fetches the
+  remaining pages on demand.
 - Downloaded items become shop products. The shop sets its own selling price and
   optionally its buying price. Library updates never overwrite a shop's price.
+- Library pages, categories, packages, bank accounts, and payment history are
+  cached locally so the relevant screens keep working offline.
 - Shops can add custom products that stay local (and sync to the server as backup).
 
 ## 7. Multi-customer carts

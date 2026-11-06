@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../sales/sales_history_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key, this.onStartSale});
@@ -305,6 +306,15 @@ class DashboardScreen extends ConsumerWidget {
                                     color: AppColors.muted,
                                     fontSize: 12,
                                   ),
+                                ),
+                                const SizedBox(width: 8),
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const SalesHistoryScreen(),
+                                    ),
+                                  ),
+                                  child: const Text('View all'),
                                 ),
                               ],
                             ),

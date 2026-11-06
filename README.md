@@ -23,9 +23,13 @@ suq/
   entitlement lease with Ed25519. The client verifies the signature and evaluates
   it against a tamper-resistant clock. Changing the phone date does not extend a
   subscription.
-- **Manual payments fit the market.** The owner picks a package, sees the bank
-  account, transfers the money, and submits the transaction number. An admin
-  approves it; the subscription starts at server time.
+- **Manual payments fit the market.** The owner picks a package (200 ETB per
+  month), sees the bank account, transfers the money, and submits the transaction
+  number. An admin approves it; the subscription starts at server time.
+- **One owner, one phone.** The account is bound to a device id. A second device
+  is rejected until an admin resets the binding from the Shops screen.
+- **Local data stays useful.** Library pages, categories, packages, bank accounts,
+  and payment history are cached in SQLite, so the app keeps working offline.
 
 ## Quick start
 
@@ -61,6 +65,11 @@ Android emulator uses `http://10.0.2.2:4000` automatically. For a physical phone
 flutter run --dart-define=SUQ_API=http://192.168.1.50:4000
 ```
 
+The shared library ships with **215 seeded products across 15 categories**. The
+library loads in pages; **Load more** fetches the next page. In
+**Products → SUQ library**, tap **Select all** to fetch every matching product and
+add them in one go, then adjust prices in the shop.
+
 ### 3. Admin app (Flutter)
 
 ```powershell
@@ -76,10 +85,12 @@ Sign in with the admin account. The console has four sections:
 - **Dashboard** — shop/revenue stats, renewals due within 7 days, recent payments.
 - **Payments** — pending queue with approve (extends the subscription) and reject
   (with a note); filters for approved/rejected history.
-- **Shops** — every shop with its owner, activity counts, subscription term, and a
-  **Grant time** action for payments confirmed outside the queue.
+- **Shops** — every shop with its owner, activity counts, subscription term, device
+  binding, a **Grant time** action for payments confirmed outside the queue, and a
+  **Reset linked device** action for lost/replaced phones.
 - **Catalog** — CRUD for packages, receiving bank accounts, library categories, and
-  library products (default selling/buying prices, units, barcodes, active state).
+  library products (default selling/buying prices, unit dropdown, barcodes, active
+  state). Category and product lists are paginated with server-side search.
 
 ## Verification
 

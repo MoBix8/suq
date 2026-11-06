@@ -63,17 +63,70 @@ final dashboardProvider = FutureProvider<AdminDashboard>((ref) async {
   return AdminDashboard.fromJson(response);
 });
 
+class PaymentQuery {
+  const PaymentQuery({
+    this.status,
+    this.bankAccountId,
+    this.page = 1,
+    this.pageSize = 25,
+  });
+
+  final String? status;
+  final String? bankAccountId;
+  final int page;
+  final int pageSize;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PaymentQuery &&
+      other.status == status &&
+      other.bankAccountId == bankAccountId &&
+      other.page == page &&
+      other.pageSize == pageSize;
+
+  @override
+  int get hashCode => Object.hash(status, bankAccountId, page, pageSize);
+}
+
+class PagedPayments {
+  const PagedPayments({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+  });
+
+  final List<PaymentRecord> items;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  bool get hasMore => page * pageSize < total;
+}
+
 final paymentsProvider =
-    FutureProvider.family<List<PaymentRecord>, String?>((ref, status) async {
+    FutureProvider.family<PagedPayments, PaymentQuery>((ref, query) async {
   final response = await ref.watch(apiProvider).get(
     '/admin/payments',
-    query: {if (status != null && status.isNotEmpty) 'status': status},
+    query: {
+      if (query.status != null && query.status!.isNotEmpty) 'status': query.status,
+      if (query.bankAccountId != null && query.bankAccountId!.isNotEmpty)
+        'bankAccountId': query.bankAccountId,
+      'page': query.page,
+      'pageSize': query.pageSize,
+    },
   );
   final list = response['payments'] as List<dynamic>? ?? [];
-  return list
-      .whereType<Map>()
-      .map((item) => PaymentRecord.fromJson(Map<String, dynamic>.from(item)))
-      .toList();
+  return PagedPayments(
+    items: list
+        .whereType<Map>()
+        .map((item) => PaymentRecord.fromJson(Map<String, dynamic>.from(item)))
+        .toList(),
+    total: asInt(response['total']),
+    page: asInt(response['page']) == 0 ? query.page : asInt(response['page']),
+    pageSize:
+        asInt(response['pageSize']) == 0 ? query.pageSize : asInt(response['pageSize']),
+  );
 });
 
 final shopsProvider = FutureProvider<List<ShopRecord>>((ref) async {
@@ -103,8 +156,29 @@ final banksProvider = FutureProvider<List<BankAccount>>((ref) async {
       .toList();
 });
 
-final categoriesProvider = FutureProvider<List<LibraryCategory>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/admin/library/categories');
+final categoriesProvider =
+    FutureProvider.family<PagedLibraryCategories, int>((ref, page) async {
+  final response = await ref.watch(apiProvider).get(
+    '/admin/library/categories',
+    query: {'page': page, 'pageSize': 20},
+  );
+  final list = response['categories'] as List<dynamic>? ?? [];
+  return PagedLibraryCategories(
+    items: list
+        .whereType<Map>()
+        .map((item) => LibraryCategory.fromJson(Map<String, dynamic>.from(item)))
+        .toList(),
+    total: asInt(response['total']),
+    page: asInt(response['page']) == 0 ? page : asInt(response['page']),
+    pageSize: asInt(response['pageSize']) == 0 ? 20 : asInt(response['pageSize']),
+  );
+});
+
+final allCategoriesProvider = FutureProvider<List<LibraryCategory>>((ref) async {
+  final response = await ref.watch(apiProvider).get(
+    '/admin/library/categories',
+    query: {'page': 1, 'pageSize': 200},
+  );
   final list = response['categories'] as List<dynamic>? ?? [];
   return list
       .whereType<Map>()
@@ -112,18 +186,56 @@ final categoriesProvider = FutureProvider<List<LibraryCategory>>((ref) async {
       .toList();
 });
 
+class LibraryProductQuery {
+  const LibraryProductQuery({
+    this.categoryId,
+    this.query = '',
+    this.page = 1,
+    this.pageSize = 25,
+  });
+
+  final String? categoryId;
+  final String query;
+  final int page;
+  final int pageSize;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LibraryProductQuery &&
+      other.categoryId == categoryId &&
+      other.query == query &&
+      other.page == page &&
+      other.pageSize == pageSize;
+
+  @override
+  int get hashCode => Object.hash(categoryId, query, page, pageSize);
+}
+
 final libraryProductsProvider =
-    FutureProvider.family<List<LibraryProduct>, String?>((ref, categoryId) async {
-  final response = await ref.watch(apiProvider).get(
-    '/admin/library/products',
-    query: {
-      'all': 'true',
-      if (categoryId != null && categoryId.isNotEmpty) 'categoryId': categoryId,
-    },
-  );
-  final list = response['products'] as List<dynamic>? ?? [];
-  return list
-      .whereType<Map>()
-      .map((item) => LibraryProduct.fromJson(Map<String, dynamic>.from(item)))
-      .toList();
-});
+    FutureProvider.family<PagedLibraryProducts, LibraryProductQuery>(
+  (ref, query) async {
+    final response = await ref.watch(apiProvider).get(
+      '/admin/library/products',
+      query: {
+        'all': 'true',
+        'page': query.page,
+        'pageSize': query.pageSize,
+        if (query.categoryId != null && query.categoryId!.isNotEmpty)
+          'categoryId': query.categoryId,
+        if (query.query.trim().isNotEmpty) 'q': query.query.trim(),
+      },
+    );
+    final list = response['products'] as List<dynamic>? ?? [];
+    return PagedLibraryProducts(
+      items: list
+          .whereType<Map>()
+          .map((item) => LibraryProduct.fromJson(Map<String, dynamic>.from(item)))
+          .toList(),
+      total: asInt(response['total']),
+      page: asInt(response['page']) == 0 ? query.page : asInt(response['page']),
+      pageSize: asInt(response['pageSize']) == 0
+          ? query.pageSize
+          : asInt(response['pageSize']),
+    );
+  },
+);

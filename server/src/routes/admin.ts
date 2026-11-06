@@ -1,8 +1,10 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAdmin } from "../auth";
 import { AppError, asyncHandler } from "../errors";
 import { addMonths } from "../lib/date";
+import { pageMeta, pageParams } from "../lib/pagination";
 import { slugify } from "../lib/phone";
 import { prisma } from "../prisma";
 
@@ -73,17 +75,28 @@ adminRouter.get(
   "/payments",
   asyncHandler(async (req, res) => {
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
-    const payments = await prisma.payment.findMany({
-      where: status ? { status } : {},
-      orderBy: { submittedAt: "desc" },
-      take: 100,
-      include: {
-        shop: { include: { user: true } },
-        package: true,
-        bankAccount: true,
-      },
-    });
-    res.json({ payments });
+    const bankAccountId =
+      typeof req.query.bankAccountId === "string" ? req.query.bankAccountId : undefined;
+    const paging = pageParams(req.query as Record<string, unknown>, 25, 100);
+    const where: Prisma.PaymentWhereInput = {
+      ...(status ? { status } : {}),
+      ...(bankAccountId ? { bankAccountId } : {}),
+    };
+    const [total, payments] = await Promise.all([
+      prisma.payment.count({ where }),
+      prisma.payment.findMany({
+        where,
+        orderBy: { submittedAt: "desc" },
+        skip: paging.skip,
+        take: paging.take,
+        include: {
+          shop: { include: { user: true } },
+          package: true,
+          bankAccount: true,
+        },
+      }),
+    ]);
+    res.json({ payments, ...pageMeta(total, paging) });
   }),
 );
 
@@ -213,6 +226,7 @@ adminRouter.get(
           city: shop.city,
           subcity: shop.subcity,
           createdAt: shop.createdAt,
+          deviceBound: !!shop.boundDeviceId,
           owner: { id: shop.user.id, name: shop.user.name, phone: shop.user.phone },
           counts: shop._count,
           subscription: sub
@@ -279,6 +293,27 @@ adminRouter.post(
         });
 
     res.json({ subscription, note: body.note ?? null });
+  }),
+);
+
+adminRouter.post(
+  "/shops/:id/reset-device",
+  asyncHandler(async (req, res) => {
+    const shop = await prisma.shop.findUnique({
+      where: { id: req.params.id },
+      select: { id: true },
+    });
+    if (!shop) throw new AppError(404, "Shop not found");
+
+    await prisma.$transaction([
+      prisma.shop.update({
+        where: { id: shop.id },
+        data: { boundDeviceId: null },
+      }),
+      prisma.device.deleteMany({ where: { shopId: shop.id } }),
+    ]);
+
+    res.json({ ok: true });
   }),
 );
 
@@ -433,12 +468,18 @@ const categoryUpdateSchema = z.object({
 
 adminRouter.get(
   "/library/categories",
-  asyncHandler(async (_req, res) => {
-    const categories = await prisma.category.findMany({
-      orderBy: { sortOrder: "asc" },
-      include: { _count: { select: { products: true } } },
-    });
-    res.json({ categories });
+  asyncHandler(async (req, res) => {
+    const paging = pageParams(req.query as Record<string, unknown>, 20, 200);
+    const [total, categories] = await Promise.all([
+      prisma.category.count(),
+      prisma.category.findMany({
+        skip: paging.skip,
+        take: paging.take,
+        orderBy: { sortOrder: "asc" },
+        include: { _count: { select: { products: true } } },
+      }),
+    ]);
+    res.json({ categories, ...pageMeta(total, paging) });
   }),
 );
 
@@ -488,6 +529,8 @@ adminRouter.delete(
 const libraryProductCreateSchema = z.object({
   categoryId: z.string().min(1),
   name: z.string().trim().min(2).max(120),
+  nameAm: z.string().trim().max(120).nullish(),
+  nameOr: z.string().trim().max(120).nullish(),
   sku: z.string().trim().max(40).optional(),
   barcode: z.string().trim().max(60).nullish(),
   unit: z.string().trim().max(20).default("pcs"),
@@ -499,6 +542,8 @@ const libraryProductCreateSchema = z.object({
 const libraryProductUpdateSchema = z.object({
   categoryId: z.string().min(1).optional(),
   name: z.string().trim().min(2).max(120).optional(),
+  nameAm: z.string().trim().max(120).nullish(),
+  nameOr: z.string().trim().max(120).nullish(),
   sku: z.string().trim().max(40).optional(),
   barcode: z.string().trim().max(60).nullish(),
   unit: z.string().trim().max(20).optional(),
@@ -513,19 +558,25 @@ adminRouter.get(
     const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId : undefined;
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
     const all = req.query.all === "true";
-    const products = await prisma.productLibraryItem.findMany({
-      where: {
-        ...(all ? {} : { active: true }),
-        ...(categoryId ? { categoryId } : {}),
-        ...(q
-          ? { OR: [{ name: { contains: q } }, { sku: { contains: q } }, { barcode: { contains: q } }] }
-          : {}),
-      },
-      orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
-      include: { category: { select: { id: true, name: true } } },
-      take: 500,
-    });
-    res.json({ products });
+    const paging = pageParams(req.query as Record<string, unknown>, 25, 200);
+    const where: Prisma.ProductLibraryItemWhereInput = {
+      ...(all ? {} : { active: true }),
+      ...(categoryId ? { categoryId } : {}),
+      ...(q
+        ? { OR: [{ name: { contains: q } }, { sku: { contains: q } }, { barcode: { contains: q } }] }
+        : {}),
+    };
+    const [total, products] = await Promise.all([
+      prisma.productLibraryItem.count({ where }),
+      prisma.productLibraryItem.findMany({
+        where,
+        orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
+        include: { category: { select: { id: true, name: true } } },
+        skip: paging.skip,
+        take: paging.take,
+      }),
+    ]);
+    res.json({ products, ...pageMeta(total, paging) });
   }),
 );
 
@@ -537,6 +588,8 @@ adminRouter.post(
       data: {
         categoryId: body.categoryId,
         name: body.name,
+        nameAm: body.nameAm ?? null,
+        nameOr: body.nameOr ?? null,
         sku: body.sku?.trim() || `ADM-${Date.now().toString(36).toUpperCase()}`,
         barcode: body.barcode ?? null,
         unit: body.unit,
@@ -571,3 +624,6 @@ adminRouter.delete(
     res.json({ product });
   }),
 );
+
+// ─── Export / Import ──────────────────────────────────────────────────────────
+

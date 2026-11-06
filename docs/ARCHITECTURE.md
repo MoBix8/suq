@@ -124,7 +124,12 @@ Core server entities:
 - `SyncLog`
 
 Local SQLite mirrors the shop-scoped subset plus `settings`, `sync_queue`,
-and `credit_entries`.
+and `credit_entries`. Version 2 adds `library_categories`, `library_products`,
+and a generic `api_cache` table for packages, bank accounts, and payment history.
+
+Catalog endpoints are paginated (`page`, `pageSize`, `total`, `hasMore`) and the
+admin catalog uses server-side search/filtering. The shop app loads library pages
+incrementally and caches each page locally.
 
 ## Environments
 
@@ -144,6 +149,7 @@ and `credit_entries`.
 | App killed mid-cart | Carts persisted in settings after every change |
 | Duplicate sync | Idempotent upserts by UUID |
 | Payment approved twice | Transaction + status check makes it idempotent |
+| Account used on a second phone | Server returns `409`; admin resets the bound device |
 | Subscription expires offline | Locked after lease; local data remains |
 
 ## Testing strategy

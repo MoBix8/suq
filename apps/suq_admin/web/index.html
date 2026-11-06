@@ -18,21 +18,29 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="SUQ ADMIN">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="suq_admin">
+  <meta name="apple-mobile-web-app-title" content="SUQ ADMIN">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>suq_admin</title>
+  <meta name="theme-color" content="#1E4B8F">
+  <title>SUQ ADMIN</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    #brand-splash { position: fixed; inset: 0; z-index: 10; display: grid; place-content: center; justify-items: center; gap: 20px; background: #1E4B8F; color: white; font: 700 20px 'Segoe UI', sans-serif; letter-spacing: .12em; transition: opacity .2s ease; }
+    #brand-splash img { width: min(56vw, 240px); height: auto; }
+    #brand-splash.done { opacity: 0; pointer-events: none; }
+  </style>
 </head>
 <body>
+  <div id="brand-splash"><img src="assets/branding/qaf_logo.png" alt=""><span>SUQ ADMIN</span></div>
+  <script>window.addEventListener('flutter-first-frame', function () { var splash = document.getElementById('brand-splash'); splash.classList.add('done'); setTimeout(function () { splash.remove(); }, 250); }, { once: true });</script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

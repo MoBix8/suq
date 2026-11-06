@@ -75,6 +75,8 @@ class Product {
     required this.id,
     this.libraryItemId,
     required this.name,
+    this.nameAm,
+    this.nameOr,
     this.barcode,
     this.unit = 'pcs',
     required this.sellingPrice,
@@ -90,6 +92,8 @@ class Product {
   final String id;
   final String? libraryItemId;
   final String name;
+  final String? nameAm;
+  final String? nameOr;
   final String? barcode;
   final String unit;
   final double sellingPrice;
@@ -110,6 +114,8 @@ class Product {
         id: map['id'] as String? ?? '',
         libraryItemId: map['library_item_id'] as String?,
         name: map['name'] as String? ?? '',
+        nameAm: map['name_am'] as String?,
+        nameOr: map['name_or'] as String?,
         barcode: map['barcode'] as String?,
         unit: map['unit'] as String? ?? 'pcs',
         sellingPrice: asDouble(map['selling_price']),
@@ -126,6 +132,8 @@ class Product {
         'id': id,
         'library_item_id': libraryItemId,
         'name': name,
+        'name_am': nameAm,
+        'name_or': nameOr,
         'barcode': barcode,
         'unit': unit,
         'selling_price': sellingPrice,
@@ -142,6 +150,8 @@ class Product {
         'id': id,
         'libraryItemId': libraryItemId,
         'name': name,
+        'name_am': nameAm,
+        'name_or': nameOr,
         'barcode': barcode,
         'unit': unit,
         'sellingPrice': sellingPrice,
@@ -155,6 +165,10 @@ class Product {
 
   Product copyWith({
     String? name,
+    String? nameAm,
+    bool clearNameAm = false,
+    String? nameOr,
+    bool clearNameOr = false,
     String? barcode,
     bool clearBarcode = false,
     String? unit,
@@ -171,6 +185,8 @@ class Product {
         id: id,
         libraryItemId: libraryItemId,
         name: name ?? this.name,
+        nameAm: clearNameAm ? null : (nameAm ?? this.nameAm),
+        nameOr: clearNameOr ? null : (nameOr ?? this.nameOr),
         barcode: clearBarcode ? null : (barcode ?? this.barcode),
         unit: unit ?? this.unit,
         sellingPrice: sellingPrice ?? this.sellingPrice,
@@ -267,6 +283,7 @@ class SaleRecord {
     required this.paymentMethod,
     required this.soldAt,
     this.itemCount = 0,
+    this.returned = false,
   });
 
   final String id;
@@ -280,6 +297,7 @@ class SaleRecord {
   final String paymentMethod;
   final DateTime soldAt;
   final int itemCount;
+  final bool returned;
 
   factory SaleRecord.fromMap(Map<String, Object?> map) => SaleRecord(
         id: map['id'] as String? ?? '',
@@ -293,6 +311,7 @@ class SaleRecord {
         paymentMethod: map['payment_method'] as String? ?? 'CASH',
         soldAt: asDate(map['sold_at']),
         itemCount: asInt(map['item_count']),
+        returned: asBool(map['returned']),
       );
 }
 
@@ -613,17 +632,40 @@ class LibraryCategory {
     required this.id,
     required this.name,
     required this.productCount,
+    this.slug,
+    this.sortOrder = 0,
   });
 
   final String id;
   final String name;
   final int productCount;
+  final String? slug;
+  final int sortOrder;
 
   factory LibraryCategory.fromJson(Map<String, dynamic> json) => LibraryCategory(
         id: json['id'] as String? ?? '',
         name: json['name'] as String? ?? '',
         productCount: asInt(json['productCount']),
+        slug: json['slug'] as String?,
+        sortOrder: asInt(json['sortOrder']),
       );
+
+  factory LibraryCategory.fromMap(Map<String, Object?> map) => LibraryCategory(
+        id: map['id'] as String? ?? '',
+        name: map['name'] as String? ?? '',
+        productCount: asInt(map['product_count']),
+        slug: map['slug'] as String?,
+        sortOrder: asInt(map['sort_order']),
+      );
+
+  Map<String, Object?> toMap({required String cachedAt}) => {
+        'id': id,
+        'name': name,
+        'slug': slug,
+        'sort_order': sortOrder,
+        'product_count': productCount,
+        'cached_at': cachedAt,
+      };
 }
 
 class LibraryProduct {
@@ -633,6 +675,8 @@ class LibraryProduct {
     required this.categoryId,
     required this.categoryName,
     required this.name,
+    this.nameAm,
+    this.nameOr,
     this.barcode,
     required this.unit,
     required this.defaultSellingPrice,
@@ -645,6 +689,8 @@ class LibraryProduct {
   final String categoryId;
   final String categoryName;
   final String name;
+  final String? nameAm;
+  final String? nameOr;
   final String? barcode;
   final String unit;
   final double defaultSellingPrice;
@@ -659,6 +705,8 @@ class LibraryProduct {
       categoryId: json['categoryId'] as String? ?? '',
       categoryName: category is Map ? category['name'] as String? ?? '' : '',
       name: json['name'] as String? ?? '',
+      nameAm: json['nameAm'] as String?,
+      nameOr: json['nameOr'] as String?,
       barcode: json['barcode'] as String?,
       unit: json['unit'] as String? ?? 'pcs',
       defaultSellingPrice: asDouble(json['defaultSellingPrice']),
@@ -668,6 +716,100 @@ class LibraryProduct {
       version: asInt(json['version']),
     );
   }
+
+  factory LibraryProduct.fromMap(Map<String, Object?> map) => LibraryProduct(
+        id: map['id'] as String? ?? '',
+        sku: map['sku'] as String? ?? '',
+        categoryId: map['category_id'] as String? ?? '',
+        categoryName: map['category_name'] as String? ?? '',
+        name: map['name'] as String? ?? '',
+        nameAm: map['name_am'] as String?,
+        nameOr: map['name_or'] as String?,
+        barcode: map['barcode'] as String?,
+        unit: map['unit'] as String? ?? 'pcs',
+        defaultSellingPrice: asDouble(map['default_selling_price']),
+        defaultBuyingPrice: map['default_buying_price'] == null
+            ? null
+            : asDouble(map['default_buying_price']),
+        version: asInt(map['version']),
+      );
+
+  Map<String, Object?> toMap({required String cachedAt}) => {
+        'id': id,
+        'sku': sku,
+        'category_id': categoryId,
+        'category_name': categoryName,
+        'name': name,
+        'name_am': nameAm,
+        'name_or': nameOr,
+        'barcode': barcode,
+        'unit': unit,
+        'default_selling_price': defaultSellingPrice,
+        'default_buying_price': defaultBuyingPrice,
+        'version': version,
+        'cached_at': cachedAt,
+      };
+}
+
+class LibraryProductPage {
+  const LibraryProductPage({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+  });
+
+  final List<LibraryProduct> items;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  bool get hasMore => page * pageSize < total;
+}
+
+class LibraryFeedQuery {
+  const LibraryFeedQuery({this.categoryId, this.search = ''});
+
+  final String? categoryId;
+  final String search;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LibraryFeedQuery &&
+      other.categoryId == categoryId &&
+      other.search == search;
+
+  @override
+  int get hashCode => Object.hash(categoryId, search);
+}
+
+class LibraryFeedState {
+  const LibraryFeedState({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+  });
+
+  final List<LibraryProduct> items;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  bool get hasMore => page * pageSize < total;
+
+  LibraryFeedState copyWith({
+    List<LibraryProduct>? items,
+    int? total,
+    int? page,
+    int? pageSize,
+  }) =>
+      LibraryFeedState(
+        items: items ?? this.items,
+        total: total ?? this.total,
+        page: page ?? this.page,
+        pageSize: pageSize ?? this.pageSize,
+      );
 }
 
 class EntitlementState {

@@ -1,11 +1,14 @@
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
-import { requireShop } from "../auth";
+import { requireAuth, requireBoundDevice, requireShop } from "../auth";
 import { asyncHandler } from "../errors";
 import { prisma } from "../prisma";
 
 export const syncRouter = Router();
+
+syncRouter.use(requireAuth);
+syncRouter.use(requireBoundDevice);
 
 const customerSchema = z.object({
   id: z.string().min(1),
@@ -21,6 +24,8 @@ const productSchema = z.object({
   id: z.string().min(1),
   libraryItemId: z.string().nullish(),
   name: z.string().min(1),
+  nameAm: z.string().nullish(),
+  nameOr: z.string().nullish(),
   barcode: z.string().nullish(),
   unit: z.string().default("pcs"),
   sellingPrice: z.number(),
@@ -56,6 +61,7 @@ const saleSchema = z.object({
   cost: z.number().default(0),
   profit: z.number().default(0),
   paymentMethod: z.string(),
+  returned: z.boolean().default(false),
   soldAt: z.string().datetime(),
   items: z.array(saleItemSchema).min(1),
 });
@@ -131,6 +137,8 @@ syncRouter.post(
           where: { id: p.id },
           update: {
             name: p.name,
+            nameAm: p.nameAm ?? null,
+            nameOr: p.nameOr ?? null,
             barcode: p.barcode ?? null,
             unit: p.unit,
             sellingPrice: p.sellingPrice,
@@ -145,6 +153,8 @@ syncRouter.post(
             shopId,
             libraryItemId: p.libraryItemId ?? null,
             name: p.name,
+            nameAm: p.nameAm ?? null,
+            nameOr: p.nameOr ?? null,
             barcode: p.barcode ?? null,
             unit: p.unit,
             sellingPrice: p.sellingPrice,
@@ -194,6 +204,7 @@ syncRouter.post(
             cost: s.cost,
             profit: s.profit,
             paymentMethod: s.paymentMethod,
+            returned: s.returned,
             soldAt: new Date(s.soldAt),
             items: {
               create: s.items.map((item) => ({

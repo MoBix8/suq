@@ -320,7 +320,80 @@ class SalesRepository {
       'sale_items',
       where: 'sale_id = ?',
       whereArgs: [saleId],
+      orderBy: 'rowid ASC',
     );
     return rows.map(SaleItemRecord.fromMap).toList();
+  }
+
+  Future<void> returnSale(String saleId) async {
+    await _db.transaction((txn) async {
+      final saleRows = await txn.query('sales', where: 'id = ?', whereArgs: [saleId], limit: 1);
+      if (saleRows.isEmpty) return;
+      final sale = SaleRecord.fromMap(saleRows.first);
+      if (sale.returned) return;
+
+      // Restock items.
+      final itemRows = await txn.query('sale_items', where: 'sale_id = ?', whereArgs: [saleId]);
+      for (final row in itemRows) {
+        final productId = row['product_id'] as String?;
+        final qty = asDouble(row['qty']);
+        if (productId != null && productId.isNotEmpty) {
+          await txn.rawUpdate(
+            'UPDATE products SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?',
+            [qty, DateTime.now().toUtc().toIso8601String(), productId],
+          );
+        }
+      }
+
+      // Adjust customer credit if applicable.
+      final customerId = saleRows.first['customer_id'] as String?;
+      if (customerId != null && sale.credit > 0.009) {
+        await txn.rawUpdate(
+          'UPDATE customers SET credit_balance = credit_balance - ?, updated_at = ? WHERE id = ?',
+          [sale.credit, DateTime.now().toUtc().toIso8601String(), customerId],
+        );
+        final entryId = const Uuid().v4();
+        await txn.insert('credit_entries', {
+          'id': entryId,
+          'customer_id': customerId,
+          'sale_id': saleId,
+          'type': 'RETURN',
+          'amount': -sale.credit,
+          'note': 'Return ${sale.receiptNo}',
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+          'synced': 0,
+        });
+      }
+
+      await txn.update(
+        'sales',
+        {'returned': 1},
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+
+      await enqueue(
+        txn,
+        entity: 'sale',
+        entityId: saleId,
+        op: 'upsert',
+        payload: {
+          'id': saleId,
+          'receiptNo': sale.receiptNo,
+          'customerId': customerId,
+          'customerName': sale.customerName,
+          'subtotal': saleRows.first['subtotal'],
+          'discount': saleRows.first['discount'],
+          'total': sale.total,
+          'paid': sale.paid,
+          'credit': sale.credit,
+          'cost': sale.cost,
+          'profit': sale.profit,
+          'paymentMethod': sale.paymentMethod,
+          'returned': true,
+          'soldAt': sale.soldAt.toUtc().toIso8601String(),
+        },
+      );
+    });
   }
 }

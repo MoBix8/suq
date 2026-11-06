@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/config.dart';
+import '../../core/remembered_phone.dart';
 import '../../core/theme.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -21,6 +22,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscure = true;
   bool _submitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load any remembered phone number without blocking the first frame.
+    RememberedPhoneStore.read().then((value) {
+      if (value != null && value.isNotEmpty && mounted) {
+        _phone.text = value;
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -45,6 +57,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _submitting = true;
       _error = null;
     });
+
+    // Remember the phone number for next time, regardless of login outcome.
+    await RememberedPhoneStore.write(phone);
 
     try {
       await ref.read(sessionProvider.notifier).login(phone: phone, pin: pin);

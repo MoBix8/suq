@@ -1,11 +1,11 @@
 {
-    "name": "suq_admin",
-    "short_name": "suq_admin",
+    "name": "SUQ ADMIN",
+    "short_name": "SUQ ADMIN",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1E4B8F",
+    "theme_color": "#1E4B8F",
+    "description": "SUQ ADMIN",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

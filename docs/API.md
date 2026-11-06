@@ -17,20 +17,28 @@ Auth header: `Authorization: Bearer <jwt>`.
   "name": "Abebe Kebede",
   "shopName": "Abebe Mini Market",
   "city": "Addis Ababa",
-  "subcity": "Bole"
+  "subcity": "Bole",
+  "deviceId": "stable-device-uuid"
 }
 ```
 
 Returns `{ token, user, shop, subscription }`. The shop starts with no active
-subscription; the client shows the activation gate.
+subscription; the client shows the activation gate. `deviceId` binds the owner
+account to this device.
 
 ### `POST /auth/login`
 
 ```json
-{ "phone": "0911111111", "pin": "1234" }
+{
+  "phone": "0911111111",
+  "pin": "1234",
+  "deviceId": "stable-device-uuid"
+}
 ```
 
-Returns `{ token, user, shop, subscription }`.
+Returns `{ token, user, shop, subscription }`. Owners must send the same
+`deviceId` that claimed the account. A different device receives `409` until an
+admin resets the binding. Admin logins do not need `deviceId`.
 
 ### `GET /auth/me`
 
@@ -50,13 +58,16 @@ Public. Active packages ordered by `sortOrder`.
 
 Public. Active bank accounts.
 
-### `GET /library/categories`
+### `GET /library/categories?page=1&pageSize=100`
 
-Auth. Categories with item counts.
+Auth + device-bound. Categories with item counts. Returns
+`{ categories, total, page, pageSize, hasMore }`.
 
-### `GET /library/products?updatedSince=ISO&categoryId=…`
+### `GET /library/products?page=1&pageSize=50&categoryId=…&q=…&updatedSince=ISO`
 
-Auth. Product library items. `updatedSince` enables incremental pulls.
+Auth + device-bound. Product library items. `q` searches name, SKU, and barcode.
+`updatedSince` enables incremental pulls. Returns
+`{ products, total, page, pageSize, hasMore }`.
 
 ## Subscription
 
@@ -147,14 +158,15 @@ All admin routes require a JWT whose user role is `ADMIN`.
 | GET | `/admin/payments?status=PENDING` | Payment queue |
 | POST | `/admin/payments/:id/approve` | Approve + activate subscription |
 | POST | `/admin/payments/:id/reject` | Reject with note |
-| GET | `/admin/shops` | Shops with subscription state |
+| GET | `/admin/shops` | Shops with subscription state and device binding |
+| POST | `/admin/shops/:id/reset-device` | Clear the bound device so the owner can log in on a new phone |
 | GET/POST | `/admin/packages` | List / create packages |
 | PATCH/DELETE | `/admin/packages/:id` | Update / deactivate |
 | GET/POST | `/admin/bank-accounts` | List / create bank accounts |
 | PATCH/DELETE | `/admin/bank-accounts/:id` | Update / deactivate |
-| GET/POST | `/admin/library/categories` | List / create categories |
+| GET/POST | `/admin/library/categories` | Paginated list (`page`, `pageSize`) / create |
 | PATCH/DELETE | `/admin/library/categories/:id` | Update / delete |
-| GET/POST | `/admin/library/products` | List / create library items |
+| GET/POST | `/admin/library/products` | Paginated list (`page`, `pageSize`, `q`, `categoryId`) / create |
 | PATCH/DELETE | `/admin/library/products/:id` | Update / deactivate |
 
 ### Approve payment response
@@ -179,5 +191,5 @@ All admin routes require a JWT whose user role is `ADMIN`.
 - `401` Missing/invalid token
 - `403` Wrong role / subscription not active
 - `404` Not found
-- `409` Conflict (duplicate transaction reference)
+- `409` Conflict (duplicate transaction reference or account already bound to another device)
 - `500` Server error

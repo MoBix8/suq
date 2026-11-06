@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/export_import.dart';
 
 class PackagesTab extends ConsumerWidget {
   const PackagesTab({super.key});
@@ -86,18 +87,29 @@ class PackagesTab extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Subscription packages offered to shops.',
-                  style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
-                ),
+              const Text(
+                'Subscription packages offered to shops.',
+                style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
               ),
-              FilledButton.icon(
-                onPressed: () => _openEditor(context, ref),
-                icon: const Icon(Icons.add_rounded, size: 19),
-                label: const Text('New package'),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _openEditor(context, ref),
+                    icon: const Icon(Icons.add_rounded, size: 19),
+                    label: const Text('New package'),
+                  ),
+                  ExportImportButtons(
+                    exportPath: '/admin/export/packages',
+                    importPath: '/admin/import/packages',
+                    onImported: () => ref.invalidate(packagesProvider),
+                  ),
+                ],
               ),
             ],
           ),

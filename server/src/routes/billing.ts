@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireShop } from "../auth";
+import { requireAuth, requireBoundDevice, requireShop } from "../auth";
 import { AppError, asyncHandler } from "../errors";
 import { addDays } from "../lib/date";
 import { signEntitlement } from "../lib/entitlement";
@@ -15,6 +15,7 @@ import { env } from "../env";
 export const billingRouter = Router();
 
 billingRouter.use(requireAuth);
+billingRouter.use(requireBoundDevice);
 
 const submitPaymentSchema = z.object({
   packageId: z.string().min(1),
@@ -119,6 +120,12 @@ billingRouter.post(
   asyncHandler(async (req, res) => {
     const { shopId } = requireShop(req);
     const body = entitlementSchema.parse(req.body);
+    if (req.auth!.deviceId && body.deviceId !== req.auth!.deviceId) {
+      throw new AppError(
+        403,
+        "This account is active on another device. Contact SUQ support to reset it.",
+      );
+    }
     const now = new Date();
 
     await prisma.device.upsert({

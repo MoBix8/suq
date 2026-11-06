@@ -262,7 +262,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Column(
                             children: filtered
-                                .map(
+                                .map<Widget>(
                                   (product) => _ProductRow(
                                     product: product,
                                     onEdit: () => _openEditor(product),
@@ -284,6 +284,16 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   }
 }
 
+String _productDisplayName(Product product) {
+  final parts = <String>[product.name];
+  if (product.nameAm != null && product.nameAm!.trim().isNotEmpty) {
+    parts.add(product.nameAm!.trim());
+  }
+  if (product.nameOr != null && product.nameOr!.trim().isNotEmpty) {
+    parts.add(product.nameOr!.trim());
+  }
+  return parts.join(' / ');
+}
 class _ProductRow extends StatelessWidget {
   const _ProductRow({
     required this.product,
@@ -316,7 +326,7 @@ class _ProductRow extends StatelessWidget {
         children: [
           Flexible(
             child: Text(
-              product.name,
+              _productDisplayName(product),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),

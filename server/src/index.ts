@@ -10,6 +10,7 @@ import { authRouter } from "./routes/auth";
 import { billingRouter } from "./routes/billing";
 import { catalogRouter } from "./routes/catalog";
 import { publicRouter } from "./routes/public";
+import { exportImportRouter } from "./routes/exportImport";
 import { syncRouter } from "./routes/sync";
 
 const app = express();
@@ -41,6 +42,7 @@ app.use("/api", catalogRouter);
 app.use("/api", billingRouter);
 app.use("/api", syncRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/admin", exportImportRouter);
 
 app.use(notFound);
 app.use(errorHandler);

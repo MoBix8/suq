@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/export_import.dart';
 
 class BanksTab extends ConsumerWidget {
   const BanksTab({super.key});
@@ -85,18 +86,29 @@ class BanksTab extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Accounts shown to shops when they pay by bank transfer.',
-                  style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
-                ),
+              const Text(
+                'Accounts shown to shops when they pay by bank transfer.',
+                style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
               ),
-              FilledButton.icon(
-                onPressed: () => _openEditor(context, ref),
-                icon: const Icon(Icons.add_rounded, size: 19),
-                label: const Text('Add account'),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _openEditor(context, ref),
+                    icon: const Icon(Icons.add_rounded, size: 19),
+                    label: const Text('Add account'),
+                  ),
+                  ExportImportButtons(
+                    exportPath: '/admin/export/bank-accounts',
+                    importPath: '/admin/import/bank-accounts',
+                    onImported: () => ref.invalidate(banksProvider),
+                  ),
+                ],
               ),
             ],
           ),

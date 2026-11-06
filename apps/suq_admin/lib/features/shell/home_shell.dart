@@ -7,6 +7,7 @@ import '../../widgets/common.dart';
 import '../catalog/catalog_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../payments/payments_screen.dart';
+import '../settings/settings_screen.dart';
 import '../shops/shops_screen.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
@@ -67,7 +68,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             PopupMenuButton<String>(
               tooltip: 'Account',
               onSelected: (value) {
-                if (value == 'logout') _logout();
+                if (value == 'settings') {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+                  );
+                } else if (value == 'logout') {
+                  _logout();
+                }
               },
               itemBuilder: (context) => [
                 PopupMenuItem(
@@ -93,6 +100,16 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   ),
                 ),
                 const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Text('Settings'),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'logout',
                   child: Row(

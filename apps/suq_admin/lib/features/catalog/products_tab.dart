@@ -1,12 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/formatters.dart';
+import '../../core/product_options.dart';
 import '../../core/theme.dart';
+import '../../core/translation_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/export_import.dart';
+import '../../widgets/pager.dart';
 
 class ProductsTab extends ConsumerStatefulWidget {
   const ProductsTab({super.key});
@@ -16,24 +23,42 @@ class ProductsTab extends ConsumerStatefulWidget {
 }
 
 class _ProductsTabState extends ConsumerState<ProductsTab> {
+  static const _pageSize = 25;
+
   final _search = TextEditingController();
+  Timer? _searchDebounce;
+  String _searchText = '';
   String _query = '';
   String _categoryFilter = '';
+  int _page = 1;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  List<LibraryProduct> _filter(List<LibraryProduct> products) {
-    final query = _query.trim().toLowerCase();
-    if (query.isEmpty) return products;
-    return products.where((product) {
-      return product.name.toLowerCase().contains(query) ||
-          product.sku.toLowerCase().contains(query) ||
-          (product.barcode ?? '').toLowerCase().contains(query);
-    }).toList();
+  void _onSearchChanged(String value) {
+    setState(() => _searchText = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      setState(() {
+        _query = value;
+        _page = 1;
+      });
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _search.clear();
+    setState(() {
+      _searchText = '';
+      _query = '';
+      _page = 1;
+    });
   }
 
   Future<void> _openEditor(List<LibraryCategory> categories, {LibraryProduct? product}) async {
@@ -60,7 +85,9 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
       }
       ref.invalidate(libraryProductsProvider);
       ref.invalidate(categoriesProvider);
+      ref.invalidate(allCategoriesProvider);
       if (mounted) {
+        setState(() => _page = 1);
         showAppSnack(context, product == null ? 'Product added to the library.' : 'Product updated.');
       }
     } on ApiException catch (error) {
@@ -94,6 +121,7 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
       }
       ref.invalidate(libraryProductsProvider);
       ref.invalidate(categoriesProvider);
+      ref.invalidate(allCategoriesProvider);
       if (mounted) {
         showAppSnack(context, deactivating ? 'Product deactivated.' : 'Product reactivated.');
       }
@@ -106,15 +134,20 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final categoriesAsync = ref.watch(categoriesProvider);
+    final categoriesAsync = ref.watch(allCategoriesProvider);
     final categories = categoriesAsync.asData?.value ?? const <LibraryCategory>[];
     // Fall back to "all" if the selected category no longer exists.
-    final selectedCategory = categories.any((category) => category.id == _categoryFilter)
+    final selectedCategory = _categoryFilter.isEmpty ||
+            categories.any((category) => category.id == _categoryFilter)
         ? _categoryFilter
         : '';
-    final productsAsync = ref.watch(
-      libraryProductsProvider(selectedCategory.isEmpty ? null : selectedCategory),
+    final query = LibraryProductQuery(
+      categoryId: selectedCategory.isEmpty ? null : selectedCategory,
+      query: _query,
+      page: _page,
+      pageSize: _pageSize,
     );
+    final productsAsync = ref.watch(libraryProductsProvider(query));
 
     return Column(
       children: [
@@ -127,30 +160,42 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                   Expanded(
                     child: TextField(
                       controller: _search,
-                      onChanged: (value) => setState(() => _query = value),
+                      onChanged: _onSearchChanged,
                       decoration: InputDecoration(
                         hintText: 'Search library by name, SKU, or barcode',
                         prefixIcon: const Icon(Icons.search_rounded),
-                        suffixIcon: _query.isEmpty
+                        suffixIcon: _searchText.isEmpty
                             ? null
                             : IconButton(
                                 tooltip: 'Clear',
-                                onPressed: () {
-                                  _search.clear();
-                                  setState(() => _query = '');
-                                },
+                                onPressed: _clearSearch,
                                 icon: const Icon(Icons.close_rounded),
                               ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
                   FilledButton.icon(
                     onPressed: categoriesAsync.isLoading
                         ? null
                         : () => _openEditor(categories),
                     icon: const Icon(Icons.add_rounded, size: 19),
                     label: const Text('New product'),
+                  ),
+                  ExportImportButtons(
+                    exportPath: '/admin/export/products',
+                    importPath: '/admin/import/products',
+                    onImported: () {
+                      ref.invalidate(libraryProductsProvider);
+                      ref.invalidate(categoriesProvider);
+                      ref.invalidate(allCategoriesProvider);
+                    },
                   ),
                 ],
               ),
@@ -181,8 +226,10 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                                 child: Text(category.name, overflow: TextOverflow.ellipsis),
                               ),
                           ],
-                          onChanged: (value) =>
-                              setState(() => _categoryFilter = value ?? ''),
+                          onChanged: (value) => setState(() {
+                            _categoryFilter = value ?? '';
+                            _page = 1;
+                          }),
                         ),
                       ),
                     ),
@@ -208,29 +255,49 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
           ),
         ),
         Expanded(
-          child: AsyncValueView<List<LibraryProduct>>(
+          child: AsyncValueView<PagedLibraryProducts>(
             value: productsAsync,
-            onRetry: () => ref.invalidate(libraryProductsProvider),
+            onRetry: () => ref.invalidate(libraryProductsProvider(query)),
             loadingMessage: 'Loading library products…',
-            builder: (records) {
-              final filtered = _filter(records);
-              if (filtered.isEmpty) {
-                return EmptyState(
-                  icon: Icons.inventory_2_rounded,
-                  title: _query.isEmpty ? 'No products here' : 'No products match your search',
-                  message: _query.isEmpty
-                      ? 'Add products to the shared library so shops can download them.'
-                      : 'Try a different name, SKU, or barcode.',
+            builder: (pageData) {
+              final records = pageData.items;
+              if (records.isEmpty) {
+                return Column(
+                  children: [
+                    Expanded(
+                      child: EmptyState(
+                        icon: Icons.inventory_2_rounded,
+                        title: _query.isEmpty ? 'No products here' : 'No products match your search',
+                        message: _query.isEmpty
+                            ? 'Add products to the shared library so shops can download them.'
+                            : 'Try a different name, SKU, or barcode.',
+                      ),
+                    ),
+                    CatalogPager(
+                      page: pageData.page,
+                      pageSize: pageData.pageSize,
+                      total: pageData.total,
+                      onPrevious: pageData.page > 1
+                          ? () => setState(() => _page -= 1)
+                          : null,
+                      onNext: pageData.hasMore
+                          ? () => setState(() => _page += 1)
+                          : null,
+                    ),
+                  ],
                 );
               }
 
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                itemCount: filtered.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final product = filtered[index];
-                  return SectionCard(
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      itemCount: records.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final product = records[index];
+                        return SectionCard(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,7 +323,7 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                                 children: [
                                   Flexible(
                                     child: Text(
-                                      product.name,
+                                      _adminProductDisplayName(product),
                                       style: const TextStyle(
                                         fontSize: 13.5,
                                         fontWeight: FontWeight.w700,
@@ -352,8 +419,22 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                         ),
                       ],
                     ),
-                  );
-                },
+                        );
+                      },
+                    ),
+                  ),
+                  CatalogPager(
+                    page: pageData.page,
+                    pageSize: pageData.pageSize,
+                    total: pageData.total,
+                    onPrevious: pageData.page > 1
+                        ? () => setState(() => _page -= 1)
+                        : null,
+                    onNext: pageData.hasMore
+                        ? () => setState(() => _page += 1)
+                        : null,
+                  ),
+                ],
               );
             },
           ),
@@ -363,10 +444,23 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
   }
 }
 
+String _adminProductDisplayName(LibraryProduct product) {
+  final parts = <String>[product.name];
+  if (product.nameAm != null && product.nameAm!.trim().isNotEmpty) {
+    parts.add(product.nameAm!.trim());
+  }
+  if (product.nameOr != null && product.nameOr!.trim().isNotEmpty) {
+    parts.add(product.nameOr!.trim());
+  }
+  return parts.join(' / ');
+}
+
 class _ProductDraft {
   const _ProductDraft({
     required this.categoryId,
     required this.name,
+    this.nameAm,
+    this.nameOr,
     required this.sku,
     required this.barcode,
     required this.unit,
@@ -377,6 +471,8 @@ class _ProductDraft {
 
   final String categoryId;
   final String name;
+  final String? nameAm;
+  final String? nameOr;
   final String sku;
   final String barcode;
   final String unit;
@@ -388,6 +484,8 @@ class _ProductDraft {
     final json = <String, dynamic>{
       'categoryId': categoryId,
       'name': name,
+      'nameAm': (nameAm ?? '').trim().isEmpty ? null : nameAm!.trim(),
+      'nameOr': (nameOr ?? '').trim().isEmpty ? null : nameOr!.trim(),
       'barcode': barcode.isEmpty ? null : barcode,
       'unit': unit,
       'defaultSellingPrice': sellingPrice,
@@ -412,22 +510,28 @@ class _ProductDialog extends StatefulWidget {
 class _ProductDialogState extends State<_ProductDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
+  late final TextEditingController _nameAm;
+  late final TextEditingController _nameOr;
   late final TextEditingController _sku;
   late final TextEditingController _barcode;
-  late final TextEditingController _unit;
   late final TextEditingController _sellingPrice;
   late final TextEditingController _buyingPrice;
   late String _categoryId;
+  late String _unit;
   late bool _active;
+  bool _suggesting = false;
+  String? _suggestionStatus;
 
   @override
   void initState() {
     super.initState();
     final product = widget.product;
     _name = TextEditingController(text: product?.name ?? '');
+    _nameAm = TextEditingController(text: product?.nameAm ?? '');
+    _nameOr = TextEditingController(text: product?.nameOr ?? '');
     _sku = TextEditingController(text: product?.sku ?? '');
     _barcode = TextEditingController(text: product?.barcode ?? '');
-    _unit = TextEditingController(text: product?.unit ?? 'pcs');
+    _unit = product?.unit ?? 'pcs';
     _sellingPrice = TextEditingController(
       text: product == null ? '' : product.defaultSellingPrice.toStringAsFixed(2),
     );
@@ -443,9 +547,10 @@ class _ProductDialogState extends State<_ProductDialog> {
   @override
   void dispose() {
     _name.dispose();
+    _nameAm.dispose();
+    _nameOr.dispose();
     _sku.dispose();
     _barcode.dispose();
-    _unit.dispose();
     _sellingPrice.dispose();
     _buyingPrice.dispose();
     super.dispose();
@@ -458,9 +563,11 @@ class _ProductDialogState extends State<_ProductDialog> {
       _ProductDraft(
         categoryId: _categoryId,
         name: _name.text.trim(),
+        nameAm: _nameAm.text.trim(),
+        nameOr: _nameOr.text.trim(),
         sku: _sku.text.trim(),
         barcode: _barcode.text.trim(),
-        unit: _unit.text.trim().isEmpty ? 'pcs' : _unit.text.trim(),
+        unit: _unit,
         sellingPrice: double.parse(_sellingPrice.text.trim()),
         buyingPrice: buyingText.isEmpty ? null : double.parse(buyingText),
         active: _active,
@@ -504,6 +611,89 @@ class _ProductDialogState extends State<_ProductDialog> {
                       : null,
                 ),
                 const SizedBox(height: 12),
+                TextFormField(
+                  controller: _nameAm,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Name in Amharic (optional)',
+                    hintText: 'ስኳር 1kg',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _nameOr,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Name in Afan Oromo (optional)',
+                    hintText: 'Sukkaara 1kg',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _suggesting
+                        ? null
+                        : () async {
+                            final name = _name.text.trim();
+                            if (name.isEmpty) {
+                              setState(() => _suggestionStatus = 'Enter an English name first.');
+                              return;
+                            }
+                            setState(() {
+                              _suggesting = true;
+                              _suggestionStatus = 'Contacting Gemini…';
+                            });
+                            try {
+                              final result = await TranslationService().suggest(name);
+                              if (!mounted) return;
+                              setState(() {
+                                if (result.amharic != null && result.amharic!.trim().isNotEmpty) {
+                                  _nameAm.text = result.amharic!.trim();
+                                }
+                                if (result.oromo != null && result.oromo!.trim().isNotEmpty) {
+                                  _nameOr.text = result.oromo!.trim();
+                                }
+                                _suggesting = false;
+                                _suggestionStatus = 'Done.';
+                              });
+                            } catch (error) {
+                              if (mounted) {
+                                setState(() {
+                                  _suggesting = false;
+                                  _suggestionStatus = error.toString();
+                                });
+                                showAppSnack(context, error.toString(), error: true);
+                              }
+                            }
+                          },
+                    icon: _suggesting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.translate_rounded, size: 18),
+                    label: Text(_suggesting ? 'Suggesting…' : 'Suggest translations (Gemini)'),
+                  ),
+                ),
+                if (_suggestionStatus != null) ...[
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    _suggestionStatus!,
+                    style: const TextStyle(fontSize: 11.5, color: AdminColors.muted),
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: _suggestionStatus!));
+                      showAppSnack(context, 'Copied.');
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 15),
+                    label: const Text('Copy'),
+                  ),
+                ],
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -529,12 +719,18 @@ class _ProductDialogState extends State<_ProductDialog> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextFormField(
-                        controller: _unit,
-                        decoration: const InputDecoration(
-                          labelText: 'Unit',
-                          hintText: 'pcs, kg, litre…',
-                        ),
+                      child: DropdownButtonFormField<String>(
+                        value: _unit,
+                        decoration: const InputDecoration(labelText: 'Unit'),
+                        items: [
+                          for (final unit in productUnits)
+                            DropdownMenuItem(value: unit, child: Text(unit)),
+                          if (!productUnits.contains(_unit))
+                            DropdownMenuItem(value: _unit, child: Text(_unit)),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) setState(() => _unit = value);
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
