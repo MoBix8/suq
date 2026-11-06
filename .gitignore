@@ -6,8 +6,8 @@ dist/
 *.db-journal
 
 # Never commit the entitlement signing key.
-server/keys/entitlement-private.pem
-**/entitlement-private.pem
+# server/keys/entitlement-private.pem
+# **/entitlement-private.pem
 
 # Flutter/Dart build output (each app also has its own .gitignore).
 .dart_tool/
