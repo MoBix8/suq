@@ -104,7 +104,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirmed != true || !mounted) return;
 
     final navigator = Navigator.of(context);
-    await ref.read(sessionProvider.notifier).logout();
+    try {
+      await ref.read(sessionProvider.notifier).logout();
+    } catch (error) {
+      if (mounted) {
+        showAppSnack(
+          context,
+          'Could not release this device. Connect to the internet and try again. $error',
+          error: true,
+        );
+      }
+      return;
+    }
     navigator.popUntil((route) => route.isFirst);
   }
 

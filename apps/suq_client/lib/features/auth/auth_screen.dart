@@ -28,6 +28,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    final prefs = ref.read(prefsProvider);
+    final remembered = prefs.getString('auth.phone');
+    if (remembered != null && remembered.isNotEmpty) {
+      _phone.text = remembered;
+    }
+  }
+
+  @override
   void dispose() {
     _phone.dispose();
     _pin.dispose();
@@ -46,6 +56,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     });
 
     try {
+      await ref.read(prefsProvider).setString('auth.phone', _phone.text.trim());
       final session = ref.read(sessionProvider.notifier);
       if (_register) {
         await session.register(

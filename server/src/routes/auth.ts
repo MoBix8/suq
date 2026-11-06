@@ -151,6 +151,26 @@ authRouter.post(
   }),
 );
 
+authRouter.post(
+  "/logout",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    if (auth.role === "OWNER" && auth.shopId && auth.deviceId) {
+      await prisma.$transaction([
+        prisma.shop.updateMany({
+          where: { id: auth.shopId, boundDeviceId: auth.deviceId },
+          data: { boundDeviceId: null },
+        }),
+        prisma.device.deleteMany({
+          where: { shopId: auth.shopId, deviceId: auth.deviceId },
+        }),
+      ]);
+    }
+    res.status(204).end();
+  }),
+);
+
 authRouter.get(
   "/me",
   requireAuth,

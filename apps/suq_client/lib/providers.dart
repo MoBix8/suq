@@ -179,6 +179,11 @@ class SessionController extends Notifier<SessionState> {
   }
 
   Future<void> logout() async {
+    final token = state.token;
+    if (token != null && token.isNotEmpty) {
+      await ref.read(apiProvider).post('/auth/logout');
+    }
+
     final prefs = ref.read(prefsProvider);
     await prefs.remove('auth.token');
     await prefs.remove('auth.user');
