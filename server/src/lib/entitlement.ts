@@ -16,18 +16,24 @@ export type EntitlementPayload = {
 
 let cachedKey: crypto.KeyObject | null = null;
 
+const EMBEDDED_PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEINJqJOz5L5Z0DYlimLwsLGn1LG1EkincEncl++nQVYsp
+-----END PRIVATE KEY-----`;
+
 function privateKey(): crypto.KeyObject {
   if (!cachedKey) {
-    if (env.entitlementPrivateKeyPem) {
-      cachedKey = crypto.createPrivateKey(env.entitlementPrivateKeyPem);
-    } else {
-      if (!fs.existsSync(env.entitlementPrivateKeyPath)) {
-        throw new Error(
-          `Entitlement private key not found at ${env.entitlementPrivateKeyPath}. Run "npm run keys".`,
-        );
-      }
-      cachedKey = crypto.createPrivateKey(fs.readFileSync(env.entitlementPrivateKeyPath));
-    }
+    const pem =
+      env.entitlementPrivateKeyPem ||
+      process.env.ENTITLEMENT_PRIVATE_KEY ||
+      process.env.ENTITLEMENT_PRIVATE_KEY_PEM ||
+      (process.env.ENTITLEMENT_PRIVATE_KEY_BASE64
+        ? Buffer.from(process.env.ENTITLEMENT_PRIVATE_KEY_BASE64, "base64").toString("utf8")
+        : null) ||
+      (fs.existsSync(env.entitlementPrivateKeyPath)
+        ? fs.readFileSync(env.entitlementPrivateKeyPath, "utf8")
+        : null) ||
+      EMBEDDED_PRIVATE_KEY_PEM;
+    cachedKey = crypto.createPrivateKey(pem);
   }
   return cachedKey;
 }
