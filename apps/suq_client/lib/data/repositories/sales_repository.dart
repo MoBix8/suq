@@ -203,7 +203,7 @@ class SalesRepository {
         COALESCE(SUM(credit), 0) AS credit_given,
         COALESCE(SUM(paid), 0) AS cash_collected
       FROM sales
-      WHERE sold_at >= ? AND sold_at < ?
+      WHERE sold_at >= ? AND sold_at < ? AND returned = 0
       ''',
       [from, to],
     );
@@ -266,7 +266,7 @@ class SalesRepository {
              SUM(si.line_total - (COALESCE(si.unit_cost, 0) * si.qty)) AS profit
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.sale_id
-      WHERE s.sold_at >= ? AND s.sold_at < ?
+      WHERE s.sold_at >= ? AND s.sold_at < ? AND s.returned = 0
       GROUP BY si.name
       ORDER BY revenue DESC
       LIMIT ?

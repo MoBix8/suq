@@ -28,11 +28,17 @@ class BanksTab extends ConsumerWidget {
       if (account == null) {
         await api.post('/admin/bank-accounts', body: draft.toJson());
       } else {
-        await api.patch('/admin/bank-accounts/${account.id}', body: draft.toJson());
+        await api.patch(
+          '/admin/bank-accounts/${account.id}',
+          body: draft.toJson(),
+        );
       }
       ref.invalidate(banksProvider);
       if (context.mounted) {
-        showAppSnack(context, account == null ? 'Bank account added.' : 'Bank account updated.');
+        showAppSnack(
+          context,
+          account == null ? 'Bank account added.' : 'Bank account updated.',
+        );
       }
     } on ApiException catch (error) {
       if (context.mounted) showAppSnack(context, error.message, error: true);
@@ -65,11 +71,19 @@ class BanksTab extends ConsumerWidget {
       if (deactivating) {
         await api.delete('/admin/bank-accounts/${account.id}');
       } else {
-        await api.patch('/admin/bank-accounts/${account.id}', body: {'active': true});
+        await api.patch(
+          '/admin/bank-accounts/${account.id}',
+          body: {'active': true},
+        );
       }
       ref.invalidate(banksProvider);
       if (context.mounted) {
-        showAppSnack(context, deactivating ? 'Bank account deactivated.' : 'Bank account reactivated.');
+        showAppSnack(
+          context,
+          deactivating
+              ? 'Bank account deactivated.'
+              : 'Bank account reactivated.',
+        );
       }
     } on ApiException catch (error) {
       if (context.mounted) showAppSnack(context, error.message, error: true);
@@ -81,6 +95,7 @@ class BanksTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accounts = ref.watch(banksProvider);
+    final compact = MediaQuery.sizeOf(context).width < 600;
 
     return Column(
       children: [
@@ -98,11 +113,18 @@ class BanksTab extends ConsumerWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  FilledButton.icon(
-                    onPressed: () => _openEditor(context, ref),
-                    icon: const Icon(Icons.add_rounded, size: 19),
-                    label: const Text('Add account'),
-                  ),
+                  if (compact)
+                    IconButton.filledTonal(
+                      tooltip: 'Add account',
+                      onPressed: () => _openEditor(context, ref),
+                      icon: const Icon(Icons.add_rounded),
+                    )
+                  else
+                    FilledButton.icon(
+                      onPressed: () => _openEditor(context, ref),
+                      icon: const Icon(Icons.add_rounded, size: 19),
+                      label: const Text('Add account'),
+                    ),
                   ExportImportButtons(
                     exportPath: '/admin/export/bank-accounts',
                     importPath: '/admin/import/bank-accounts',
@@ -123,14 +145,16 @@ class BanksTab extends ConsumerWidget {
                 return const EmptyState(
                   icon: Icons.account_balance_rounded,
                   title: 'No bank accounts',
-                  message: 'Add the account that receives subscription payments.',
+                  message:
+                      'Add the account that receives subscription payments.',
                 );
               }
 
               return ListView.separated(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                 itemCount: records.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 12),
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 12),
                 itemBuilder: (context, index) {
                   final account = records[index];
                   return SectionCard(
@@ -171,7 +195,9 @@ class BanksTab extends ConsumerWidget {
                                       ),
                                       const SizedBox(width: 8),
                                       StatusChip(
-                                        label: account.active ? 'ACTIVE' : 'INACTIVE',
+                                        label: account.active
+                                            ? 'ACTIVE'
+                                            : 'INACTIVE',
                                         color: account.active
                                             ? AdminColors.success
                                             : AdminColors.muted,
@@ -213,7 +239,10 @@ class BanksTab extends ConsumerWidget {
                             child: Column(
                               children: [
                                 if ((account.branch ?? '').isNotEmpty)
-                                  KeyValueRow(label: 'Branch', value: account.branch!),
+                                  KeyValueRow(
+                                    label: 'Branch',
+                                    value: account.branch!,
+                                  ),
                                 if ((account.instructions ?? '').isNotEmpty)
                                   KeyValueRow(
                                     label: 'Instructions',
@@ -235,27 +264,56 @@ class BanksTab extends ConsumerWidget {
                               ),
                             ),
                             const Spacer(),
-                            TextButton.icon(
-                              onPressed: () => _toggleActive(context, ref, account),
-                              style: TextButton.styleFrom(
-                                foregroundColor: account.active
+                            if (compact)
+                              IconButton(
+                                tooltip: account.active
+                                    ? 'Deactivate'
+                                    : 'Reactivate',
+                                onPressed: () =>
+                                    _toggleActive(context, ref, account),
+                                color: account.active
                                     ? AdminColors.danger
                                     : AdminColors.success,
+                                icon: Icon(
+                                  account.active
+                                      ? Icons.pause_circle_outline_rounded
+                                      : Icons.play_circle_outline_rounded,
+                                ),
+                              )
+                            else
+                              TextButton.icon(
+                                onPressed: () =>
+                                    _toggleActive(context, ref, account),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: account.active
+                                      ? AdminColors.danger
+                                      : AdminColors.success,
+                                ),
+                                icon: Icon(
+                                  account.active
+                                      ? Icons.pause_circle_outline_rounded
+                                      : Icons.play_circle_outline_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  account.active ? 'Deactivate' : 'Reactivate',
+                                ),
                               ),
-                              icon: Icon(
-                                account.active
-                                    ? Icons.pause_circle_outline_rounded
-                                    : Icons.play_circle_outline_rounded,
-                                size: 18,
-                              ),
-                              label: Text(account.active ? 'Deactivate' : 'Reactivate'),
-                            ),
                             const SizedBox(width: 4),
-                            OutlinedButton.icon(
-                              onPressed: () => _openEditor(context, ref, account: account),
-                              icon: const Icon(Icons.edit_outlined, size: 17),
-                              label: const Text('Edit'),
-                            ),
+                            if (compact)
+                              IconButton(
+                                tooltip: 'Edit account',
+                                onPressed: () =>
+                                    _openEditor(context, ref, account: account),
+                                icon: const Icon(Icons.edit_outlined),
+                              )
+                            else
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    _openEditor(context, ref, account: account),
+                                icon: const Icon(Icons.edit_outlined, size: 17),
+                                label: const Text('Edit'),
+                              ),
                           ],
                         ),
                       ],
@@ -291,14 +349,14 @@ class _BankDraft {
   final bool active;
 
   Map<String, dynamic> toJson() => {
-        'bankName': bankName,
-        'accountName': accountName,
-        'accountNumber': accountNumber,
-        'branch': branch,
-        'instructions': instructions,
-        'sortOrder': sortOrder,
-        'active': active,
-      };
+    'bankName': bankName,
+    'accountName': accountName,
+    'accountNumber': accountNumber,
+    'branch': branch,
+    'instructions': instructions,
+    'sortOrder': sortOrder,
+    'active': active,
+  };
 }
 
 class _BankDialog extends StatefulWidget {
@@ -364,7 +422,9 @@ class _BankDialogState extends State<_BankDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.account == null ? 'Add bank account' : 'Edit bank account'),
+      title: Text(
+        widget.account == null ? 'Add bank account' : 'Edit bank account',
+      ),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -394,7 +454,9 @@ class _BankDialogState extends State<_BankDialog> {
                 TextFormField(
                   controller: _accountNumber,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Account number'),
+                  decoration: const InputDecoration(
+                    labelText: 'Account number',
+                  ),
                   validator: (value) {
                     final text = (value ?? '').trim();
                     if (text.length < 4) return 'Enter at least 4 characters.';
@@ -404,7 +466,9 @@ class _BankDialogState extends State<_BankDialog> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _branch,
-                  decoration: const InputDecoration(labelText: 'Branch (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Branch (optional)',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -426,7 +490,8 @@ class _BankDialogState extends State<_BankDialog> {
                     labelText: 'Sort order',
                     helperText: 'Lower numbers appear first.',
                   ),
-                  validator: (value) => int.tryParse((value ?? '').trim()) == null
+                  validator: (value) =>
+                      int.tryParse((value ?? '').trim()) == null
                       ? 'Enter a whole number.'
                       : null,
                 ),
@@ -434,7 +499,9 @@ class _BankDialogState extends State<_BankDialog> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Active'),
-                  subtitle: const Text('Inactive accounts are hidden from shops.'),
+                  subtitle: const Text(
+                    'Inactive accounts are hidden from shops.',
+                  ),
                   value: _active,
                   onChanged: (value) => setState(() => _active = value),
                 ),

@@ -600,7 +600,8 @@ class _RecentSaleRow extends StatelessWidget {
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  '${sale.receiptNo} • ${formatTime(sale.soldAt)}',
+                  '${sale.receiptNo} • ${formatTime(sale.soldAt)}'
+                  '${sale.returned ? ' • Returned' : ''}',
                   style: const TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
               ],

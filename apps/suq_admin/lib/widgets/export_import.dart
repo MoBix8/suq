@@ -29,20 +29,34 @@ class ExportImportButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        OutlinedButton.icon(
-          onPressed: () => _export(context),
-          icon: const Icon(Icons.download_rounded, size: 17),
-          label: Text(exportLabel),
-        ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: () => _import(context),
-          icon: const Icon(Icons.upload_rounded, size: 17),
-          label: Text(importLabel),
-        ),
+        if (compact) ...[
+          IconButton(
+            tooltip: exportLabel,
+            onPressed: () => _export(context),
+            icon: const Icon(Icons.download_rounded),
+          ),
+          IconButton(
+            tooltip: importLabel,
+            onPressed: () => _import(context),
+            icon: const Icon(Icons.upload_rounded),
+          ),
+        ] else ...[
+          OutlinedButton.icon(
+            onPressed: () => _export(context),
+            icon: const Icon(Icons.download_rounded, size: 17),
+            label: Text(exportLabel),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () => _import(context),
+            icon: const Icon(Icons.upload_rounded, size: 17),
+            label: Text(importLabel),
+          ),
+        ],
       ],
     );
   }
@@ -128,10 +142,7 @@ class ExportImportButtons extends StatelessWidget {
       final response = await api.post(importPath, body: payload);
       if (!context.mounted) return;
       onImported();
-      showAppSnack(
-        context,
-        'Imported: ${response.toString()}',
-      );
+      showAppSnack(context, 'Imported: ${response.toString()}');
     } on ApiException catch (error) {
       if (context.mounted) showAppSnack(context, error.message, error: true);
     } catch (error) {

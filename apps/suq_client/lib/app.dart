@@ -6,7 +6,6 @@ import 'features/activation/activation_screen.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/shell/home_shell.dart';
 import 'providers.dart';
-import 'widgets/common.dart';
 
 class SuqApp extends ConsumerWidget {
   const SuqApp({super.key});
@@ -21,9 +20,8 @@ class SuqApp extends ConsumerWidget {
       home = const AuthScreen();
     } else {
       home = entitlement.when(
-        data: (state) => state.active
-            ? const HomeShell()
-            : ActivationScreen(state: state),
+        data: (state) =>
+            state.active ? const HomeShell() : ActivationScreen(state: state),
         loading: () => const SplashScreen(),
         error: (error, stack) => ActivationScreen(error: error.toString()),
       );
@@ -44,33 +42,46 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const AppLogo(size: 78),
-            const SizedBox(height: 22),
-            const Text(
-              'SUQ',
-              style: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 4,
-                color: AppColors.ink,
-              ),
+      backgroundColor: AppColors.seed,
+      body: SizedBox.expand(
+        child: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'assets/branding/qaf_logo.png',
+                  width: 190,
+                  height: 106,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'SUQ',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 4,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Checking your subscription…',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
+                ),
+                const SizedBox(height: 24),
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Checking your subscription…',
-              style: TextStyle(color: AppColors.muted),
-            ),
-            const SizedBox(height: 26),
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.4),
-            ),
-          ],
+          ),
         ),
       ),
     );

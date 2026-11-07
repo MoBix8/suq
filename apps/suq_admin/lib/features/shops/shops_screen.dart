@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/pager.dart';
 
 class ShopsScreen extends ConsumerStatefulWidget {
   const ShopsScreen({super.key});
@@ -17,8 +18,11 @@ class ShopsScreen extends ConsumerStatefulWidget {
 }
 
 class _ShopsScreenState extends ConsumerState<ShopsScreen> {
+  static const _pageSize = 10;
+
   final _search = TextEditingController();
   String _query = '';
+  int _page = 1;
 
   @override
   void dispose() {
@@ -46,13 +50,15 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
     if (result == null) return;
 
     try {
-      await ref.read(apiProvider).post(
-        '/admin/shops/${shop.id}/grant',
-        body: {
-          'months': result.months,
-          if (result.note.trim().isNotEmpty) 'note': result.note.trim(),
-        },
-      );
+      await ref
+          .read(apiProvider)
+          .post(
+            '/admin/shops/${shop.id}/grant',
+            body: {
+              'months': result.months,
+              if (result.note.trim().isNotEmpty) 'note': result.note.trim(),
+            },
+          );
       ref.invalidate(shopsProvider);
       ref.invalidate(dashboardProvider);
       if (mounted) {
@@ -84,7 +90,10 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
       await ref.read(apiProvider).post('/admin/shops/${shop.id}/reset-device');
       ref.invalidate(shopsProvider);
       if (mounted) {
-        showAppSnack(context, 'Device reset. ${shop.name} can log in on a new phone.');
+        showAppSnack(
+          context,
+          'Device reset. ${shop.name} can log in on a new phone.',
+        );
       }
     } on ApiException catch (error) {
       if (mounted) showAppSnack(context, error.message, error: true);
@@ -120,7 +129,10 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
                     SizedBox(height: 3),
                     Text(
                       'Monitor every SUQ shop and grant time when a payment is confirmed outside the queue.',
-                      style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: AdminColors.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -137,7 +149,10 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
           child: TextField(
             controller: _search,
-            onChanged: (value) => setState(() => _query = value),
+            onChanged: (value) => setState(() {
+              _query = value;
+              _page = 1;
+            }),
             decoration: InputDecoration(
               hintText: 'Search by shop, owner, phone, or city',
               prefixIcon: const Icon(Icons.search_rounded),
@@ -164,29 +179,57 @@ class _ShopsScreenState extends ConsumerState<ShopsScreen> {
               if (filtered.isEmpty) {
                 return EmptyState(
                   icon: Icons.storefront_rounded,
-                  title: _query.isEmpty ? 'No shops yet' : 'No shops match your search',
+                  title: _query.isEmpty
+                      ? 'No shops yet'
+                      : 'No shops match your search',
                   message: _query.isEmpty
                       ? 'Shops appear here after the owner creates an account in the SUQ shop app.'
                       : 'Try a different name, phone number, or city.',
                 );
               }
 
-              return RefreshIndicator(
-                onRefresh: () async {
-                  ref.invalidate(shopsProvider);
-                  await ref.read(shopsProvider.future);
-                },
-                child: ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                  itemCount: filtered.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) => _ShopCard(
-                    shop: filtered[index],
-                    onGrant: () => _grant(filtered[index]),
-                    onResetDevice: () => _resetDevice(filtered[index]),
+              final pageCount = (filtered.length + _pageSize - 1) ~/ _pageSize;
+              final page = _page.clamp(1, pageCount).toInt();
+              final pageShops = filtered
+                  .skip((page - 1) * _pageSize)
+                  .take(_pageSize)
+                  .toList();
+
+              return Column(
+                children: [
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(shopsProvider);
+                        await ref.read(shopsProvider.future);
+                      },
+                      child: ListView.separated(
+                        key: PageStorageKey<int>(page),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                        itemCount: pageShops.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12),
+                        itemBuilder: (context, index) => _ShopCard(
+                          shop: pageShops[index],
+                          onGrant: () => _grant(pageShops[index]),
+                          onResetDevice: () => _resetDevice(pageShops[index]),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  CatalogPager(
+                    page: page,
+                    pageSize: _pageSize,
+                    total: filtered.length,
+                    onPrevious: page > 1
+                        ? () => setState(() => _page = page - 1)
+                        : null,
+                    onNext: page < pageCount
+                        ? () => setState(() => _page = page + 1)
+                        : null,
+                  ),
+                ],
               );
             },
           ),
@@ -212,7 +255,9 @@ class _ShopCard extends StatelessWidget {
     final subscription = shop.subscription;
     final active = shop.active;
     final statusColor = active
-        ? (subscription!.daysLeft <= 5 ? AdminColors.warning : AdminColors.success)
+        ? (subscription!.daysLeft <= 5
+              ? AdminColors.warning
+              : AdminColors.success)
         : AdminColors.danger;
 
     return SectionCard(
@@ -228,7 +273,11 @@ class _ShopCard extends StatelessWidget {
                   color: AdminColors.seed.withValues(alpha: 0.09),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(Icons.storefront_rounded, color: AdminColors.seed, size: 22),
+                child: const Icon(
+                  Icons.storefront_rounded,
+                  color: AdminColors.seed,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -247,15 +296,26 @@ class _ShopCard extends StatelessWidget {
                     Text(
                       [
                         if ((shop.ownerName ?? '').isNotEmpty) shop.ownerName!,
-                        if ((shop.ownerPhone ?? '').isNotEmpty) shop.ownerPhone!,
+                        if ((shop.ownerPhone ?? '').isNotEmpty)
+                          shop.ownerPhone!,
                       ].join(' · '),
-                      style: const TextStyle(fontSize: 12, color: AdminColors.muted),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AdminColors.muted,
+                      ),
                     ),
-                    if ((shop.city ?? '').isNotEmpty || (shop.subcity ?? '').isNotEmpty) ...[
+                    if ((shop.city ?? '').isNotEmpty ||
+                        (shop.subcity ?? '').isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        [shop.city, shop.subcity].whereType<String>().where((v) => v.isNotEmpty).join(', '),
-                        style: const TextStyle(fontSize: 11.5, color: AdminColors.muted),
+                        [shop.city, shop.subcity]
+                            .whereType<String>()
+                            .where((v) => v.isNotEmpty)
+                            .join(', '),
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: AdminColors.muted,
+                        ),
                       ),
                     ],
                   ],
@@ -263,7 +323,9 @@ class _ShopCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               StatusChip(
-                label: active ? daysLeftLabel(subscription!.endsAt) : 'Inactive',
+                label: active
+                    ? daysLeftLabel(subscription!.endsAt)
+                    : 'Inactive',
                 color: statusColor,
                 icon: active ? Icons.verified_rounded : Icons.block_rounded,
               ),
@@ -296,11 +358,7 @@ class _ShopCard extends StatelessWidget {
               final counts = _CountsRow(shop: shop);
               if (!wide) {
                 return Column(
-                  children: [
-                    details,
-                    const SizedBox(height: 12),
-                    counts,
-                  ],
+                  children: [details, const SizedBox(height: 12), counts],
                 );
               }
               return Row(
@@ -319,7 +377,10 @@ class _ShopCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Joined ${formatDate(shop.createdAt)}',
-                  style: const TextStyle(fontSize: 11.5, color: AdminColors.muted),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AdminColors.muted,
+                  ),
                 ),
               ),
               OutlinedButton.icon(
@@ -352,7 +413,11 @@ class _SubscriptionDetails extends StatelessWidget {
         ),
         child: const Row(
           children: [
-            Icon(Icons.info_outline_rounded, size: 17, color: AdminColors.danger),
+            Icon(
+              Icons.info_outline_rounded,
+              size: 17,
+              color: AdminColors.danger,
+            ),
             SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -373,7 +438,11 @@ class _SubscriptionDetails extends StatelessWidget {
       ),
       child: Column(
         children: [
-          KeyValueRow(label: 'Package', value: subscription.packageName ?? '—', bold: true),
+          KeyValueRow(
+            label: 'Package',
+            value: subscription.packageName ?? '—',
+            bold: true,
+          ),
           KeyValueRow(
             label: 'Current term',
             value: subscription.startsAt == null || subscription.endsAt == null
@@ -383,7 +452,9 @@ class _SubscriptionDetails extends StatelessWidget {
           KeyValueRow(
             label: 'Status',
             value: subscription.active ? 'Active' : subscription.status,
-            valueColor: subscription.active ? AdminColors.success : AdminColors.danger,
+            valueColor: subscription.active
+                ? AdminColors.success
+                : AdminColors.danger,
           ),
         ],
       ),
@@ -406,9 +477,15 @@ class _CountsRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(child: _Count(label: 'Sales', value: shop.salesCount)),
-          Expanded(child: _Count(label: 'Customers', value: shop.customersCount)),
-          Expanded(child: _Count(label: 'Payments', value: shop.paymentsCount)),
+          Expanded(
+            child: _Count(label: 'Sales', value: shop.salesCount),
+          ),
+          Expanded(
+            child: _Count(label: 'Customers', value: shop.customersCount),
+          ),
+          Expanded(
+            child: _Count(label: 'Payments', value: shop.paymentsCount),
+          ),
         ],
       ),
     );
@@ -434,7 +511,10 @@ class _Count extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: AdminColors.muted),
+        ),
       ],
     );
   }
@@ -471,7 +551,9 @@ class _GrantDialogState extends State<_GrantDialog> {
   void _submit() {
     final months = int.tryParse(_months.text.trim());
     if (months == null || months < 1 || months > 36) {
-      setState(() => _error = 'Enter a whole number of months between 1 and 36.');
+      setState(
+        () => _error = 'Enter a whole number of months between 1 and 36.',
+      );
       return;
     }
     Navigator.of(context).pop(_GrantResult(months: months, note: _note.text));
@@ -494,8 +576,12 @@ class _GrantDialogState extends State<_GrantDialog> {
                 currentEnd == null
                     ? 'This shop has no active term. Granting time starts a new subscription.'
                     : 'The new months are appended to the current end date '
-                        '(${formatDate(currentEnd)}).',
-                style: const TextStyle(fontSize: 12.5, color: AdminColors.muted, height: 1.5),
+                          '(${formatDate(currentEnd)}).',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: AdminColors.muted,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -533,7 +619,10 @@ class _GrantDialogState extends State<_GrantDialog> {
               if (_error != null)
                 Text(
                   _error!,
-                  style: const TextStyle(fontSize: 12, color: AdminColors.danger),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AdminColors.danger,
+                  ),
                 ),
             ],
           ),

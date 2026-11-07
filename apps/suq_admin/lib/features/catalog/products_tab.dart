@@ -61,18 +61,23 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
     });
   }
 
-  Future<void> _openEditor(List<LibraryCategory> categories, {LibraryProduct? product}) async {
+  Future<void> _openEditor(
+    List<LibraryCategory> categories, {
+    LibraryProduct? product,
+  }) async {
     if (categories.isEmpty) {
-      showAppSnack(context, 'Create a category before adding products.', error: true);
+      showAppSnack(
+        context,
+        'Create a category before adding products.',
+        error: true,
+      );
       return;
     }
 
     final draft = await showDialog<_ProductDraft>(
       context: context,
-      builder: (context) => _ProductDialog(
-        categories: categories,
-        product: product,
-      ),
+      builder: (context) =>
+          _ProductDialog(categories: categories, product: product),
     );
     if (draft == null) return;
 
@@ -81,14 +86,22 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
       if (product == null) {
         await api.post('/admin/library/products', body: draft.toJson());
       } else {
-        await api.patch('/admin/library/products/${product.id}', body: draft.toJson());
+        await api.patch(
+          '/admin/library/products/${product.id}',
+          body: draft.toJson(),
+        );
       }
       ref.invalidate(libraryProductsProvider);
       ref.invalidate(categoriesProvider);
       ref.invalidate(allCategoriesProvider);
       if (mounted) {
         setState(() => _page = 1);
-        showAppSnack(context, product == null ? 'Product added to the library.' : 'Product updated.');
+        showAppSnack(
+          context,
+          product == null
+              ? 'Product added to the library.'
+              : 'Product updated.',
+        );
       }
     } on ApiException catch (error) {
       if (mounted) showAppSnack(context, error.message, error: true);
@@ -117,13 +130,19 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
       if (deactivating) {
         await api.delete('/admin/library/products/${product.id}');
       } else {
-        await api.patch('/admin/library/products/${product.id}', body: {'active': true});
+        await api.patch(
+          '/admin/library/products/${product.id}',
+          body: {'active': true},
+        );
       }
       ref.invalidate(libraryProductsProvider);
       ref.invalidate(categoriesProvider);
       ref.invalidate(allCategoriesProvider);
       if (mounted) {
-        showAppSnack(context, deactivating ? 'Product deactivated.' : 'Product reactivated.');
+        showAppSnack(
+          context,
+          deactivating ? 'Product deactivated.' : 'Product reactivated.',
+        );
       }
     } on ApiException catch (error) {
       if (mounted) showAppSnack(context, error.message, error: true);
@@ -135,9 +154,11 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
   @override
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(allCategoriesProvider);
-    final categories = categoriesAsync.asData?.value ?? const <LibraryCategory>[];
+    final categories =
+        categoriesAsync.asData?.value ?? const <LibraryCategory>[];
     // Fall back to "all" if the selected category no longer exists.
-    final selectedCategory = _categoryFilter.isEmpty ||
+    final selectedCategory =
+        _categoryFilter.isEmpty ||
             categories.any((category) => category.id == _categoryFilter)
         ? _categoryFilter
         : '';
@@ -148,11 +169,17 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
       pageSize: _pageSize,
     );
     final productsAsync = ref.watch(libraryProductsProvider(query));
+    final compact = MediaQuery.sizeOf(context).width < 600;
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          padding: EdgeInsets.fromLTRB(
+            compact ? 12 : 20,
+            compact ? 8 : 16,
+            compact ? 12 : 20,
+            compact ? 4 : 8,
+          ),
           child: Column(
             children: [
               Row(
@@ -162,6 +189,10 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                       controller: _search,
                       onChanged: _onSearchChanged,
                       decoration: InputDecoration(
+                        isDense: compact,
+                        contentPadding: compact
+                            ? const EdgeInsets.symmetric(vertical: 10)
+                            : null,
                         hintText: 'Search library by name, SKU, or barcode',
                         prefixIcon: const Icon(Icons.search_rounded),
                         suffixIcon: _searchText.isEmpty
@@ -174,81 +205,149 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                       ),
                     ),
                   ),
+                  if (compact) ...[
+                    const SizedBox(width: 4),
+                    IconButton.filledTonal(
+                      tooltip: 'New product',
+                      onPressed: categoriesAsync.isLoading
+                          ? null
+                          : () => _openEditor(categories),
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                    ExportImportButtons(
+                      exportPath: '/admin/export/products',
+                      importPath: '/admin/import/products',
+                      onImported: () {
+                        ref.invalidate(libraryProductsProvider);
+                        ref.invalidate(categoriesProvider);
+                        ref.invalidate(allCategoriesProvider);
+                      },
+                    ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: categoriesAsync.isLoading
-                        ? null
-                        : () => _openEditor(categories),
-                    icon: const Icon(Icons.add_rounded, size: 19),
-                    label: const Text('New product'),
-                  ),
-                  ExportImportButtons(
-                    exportPath: '/admin/export/products',
-                    importPath: '/admin/import/products',
-                    onImported: () {
-                      ref.invalidate(libraryProductsProvider);
-                      ref.invalidate(categoriesProvider);
-                      ref.invalidate(allCategoriesProvider);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
+              if (!compact) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: categoriesAsync.isLoading
+                          ? null
+                          : () => _openEditor(categories),
+                      icon: const Icon(Icons.add_rounded, size: 19),
+                      label: const Text('New product'),
+                    ),
+                    ExportImportButtons(
+                      exportPath: '/admin/export/products',
+                      importPath: '/admin/import/products',
+                      onImported: () {
+                        ref.invalidate(libraryProductsProvider);
+                        ref.invalidate(categoriesProvider);
+                        ref.invalidate(allCategoriesProvider);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+              SizedBox(height: compact ? 6 : 10),
               Row(
                 children: [
-                  SizedBox(
-                    width: 250,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AdminColors.border),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: selectedCategory,
-                          isExpanded: true,
-                          items: [
-                            const DropdownMenuItem(
-                              value: '',
-                              child: Text('All categories'),
-                            ),
-                            for (final category in categories)
-                              DropdownMenuItem(
-                                value: category.id,
-                                child: Text(category.name, overflow: TextOverflow.ellipsis),
-                              ),
-                          ],
-                          onChanged: (value) => setState(() {
-                            _categoryFilter = value ?? '';
-                            _page = 1;
-                          }),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  if (categoriesAsync.hasError)
+                  if (compact)
                     Expanded(
-                      child: Text(
-                        categoriesAsync.error.toString(),
-                        style: const TextStyle(fontSize: 11.5, color: AdminColors.danger),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AdminColors.border),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: selectedCategory,
+                            isExpanded: true,
+                            items: [
+                              const DropdownMenuItem(
+                                value: '',
+                                child: Text('All categories'),
+                              ),
+                              for (final category in categories)
+                                DropdownMenuItem(
+                                  value: category.id,
+                                  child: Text(
+                                    category.name,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (value) => setState(() {
+                              _categoryFilter = value ?? '';
+                              _page = 1;
+                            }),
+                          ),
+                        ),
                       ),
                     )
                   else
-                    const Expanded(
-                      child: Text(
-                        'Products downloaded by shops keep their own selling price.',
-                        style: TextStyle(fontSize: 11.5, color: AdminColors.muted),
+                    SizedBox(
+                      width: 250,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AdminColors.border),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: selectedCategory,
+                            isExpanded: true,
+                            items: [
+                              const DropdownMenuItem(
+                                value: '',
+                                child: Text('All categories'),
+                              ),
+                              for (final category in categories)
+                                DropdownMenuItem(
+                                  value: category.id,
+                                  child: Text(
+                                    category.name,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (value) => setState(() {
+                              _categoryFilter = value ?? '';
+                              _page = 1;
+                            }),
+                          ),
+                        ),
                       ),
                     ),
+                  if (!compact) ...[
+                    const SizedBox(width: 10),
+                    if (categoriesAsync.hasError)
+                      Expanded(
+                        child: Text(
+                          categoriesAsync.error.toString(),
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: AdminColors.danger,
+                          ),
+                        ),
+                      )
+                    else
+                      const Expanded(
+                        child: Text(
+                          'Products downloaded by shops keep their own selling price.',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: AdminColors.muted,
+                          ),
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ],
@@ -267,7 +366,9 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                     Expanded(
                       child: EmptyState(
                         icon: Icons.inventory_2_rounded,
-                        title: _query.isEmpty ? 'No products here' : 'No products match your search',
+                        title: _query.isEmpty
+                            ? 'No products here'
+                            : 'No products match your search',
                         message: _query.isEmpty
                             ? 'Add products to the shared library so shops can download them.'
                             : 'Try a different name, SKU, or barcode.',
@@ -294,131 +395,143 @@ class _ProductsTabState extends ConsumerState<ProductsTab> {
                     child: ListView.separated(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                       itemCount: records.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 8),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final product = records[index];
                         return SectionCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(9),
-                          decoration: BoxDecoration(
-                            color: AdminColors.seed.withValues(alpha: 0.09),
-                            borderRadius: BorderRadius.circular(10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
-                          child: const Icon(
-                            Icons.inventory_2_rounded,
-                            size: 18,
-                            color: AdminColors.seed,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
+                          child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      _adminProductDisplayName(product),
+                              Container(
+                                padding: const EdgeInsets.all(9),
+                                decoration: BoxDecoration(
+                                  color: AdminColors.seed.withValues(
+                                    alpha: 0.09,
+                                  ),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.inventory_2_rounded,
+                                  size: 18,
+                                  color: AdminColors.seed,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            _adminProductDisplayName(product),
+                                            style: const TextStyle(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: AdminColors.ink,
+                                            ),
+                                          ),
+                                        ),
+                                        if (!product.active) ...[
+                                          const SizedBox(width: 8),
+                                          const StatusChip(
+                                            label: 'INACTIVE',
+                                            color: AdminColors.muted,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${product.categoryName} · ${product.sku}'
+                                      '${(product.barcode ?? '').isEmpty ? '' : ' · ${product.barcode}'}',
                                       style: const TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: AdminColors.ink,
+                                        fontSize: 11.5,
+                                        color: AdminColors.muted,
                                       ),
                                     ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    '${money(product.defaultSellingPrice)} / ${product.unit}',
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: AdminColors.ink,
+                                    ),
                                   ),
-                                  if (!product.active) ...[
-                                    const SizedBox(width: 8),
-                                    const StatusChip(
-                                      label: 'INACTIVE',
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    product.defaultBuyingPrice == null
+                                        ? 'No buying price'
+                                        : 'Buy ${money(product.defaultBuyingPrice!)}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
                                       color: AdminColors.muted,
                                     ),
-                                  ],
+                                  ),
                                 ],
                               ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${product.categoryName} · ${product.sku}'
-                                '${(product.barcode ?? '').isEmpty ? '' : ' · ${product.barcode}'}',
-                                style: const TextStyle(
-                                  fontSize: 11.5,
-                                  color: AdminColors.muted,
-                                ),
+                              const SizedBox(width: 4),
+                              PopupMenuButton<String>(
+                                tooltip: 'Product actions',
+                                onSelected: (value) {
+                                  if (value == 'edit') {
+                                    _openEditor(categories, product: product);
+                                  } else if (value == 'toggle') {
+                                    _toggleActive(product);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'edit',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.edit_outlined, size: 17),
+                                        SizedBox(width: 8),
+                                        Text('Edit'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'toggle',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          product.active
+                                              ? Icons
+                                                    .pause_circle_outline_rounded
+                                              : Icons
+                                                    .play_circle_outline_rounded,
+                                          size: 17,
+                                          color: product.active
+                                              ? AdminColors.danger
+                                              : AdminColors.success,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          product.active
+                                              ? 'Deactivate'
+                                              : 'Reactivate',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${money(product.defaultSellingPrice)} / ${product.unit}',
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: AdminColors.ink,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              product.defaultBuyingPrice == null
-                                  ? 'No buying price'
-                                  : 'Buy ${money(product.defaultBuyingPrice!)}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AdminColors.muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 4),
-                        PopupMenuButton<String>(
-                          tooltip: 'Product actions',
-                          onSelected: (value) {
-                            if (value == 'edit') {
-                              _openEditor(categories, product: product);
-                            } else if (value == 'toggle') {
-                              _toggleActive(product);
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.edit_outlined, size: 17),
-                                  SizedBox(width: 8),
-                                  Text('Edit'),
-                                ],
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 'toggle',
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    product.active
-                                        ? Icons.pause_circle_outline_rounded
-                                        : Icons.play_circle_outline_rounded,
-                                    size: 17,
-                                    color: product.active
-                                        ? AdminColors.danger
-                                        : AdminColors.success,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(product.active ? 'Deactivate' : 'Reactivate'),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
                         );
                       },
                     ),
@@ -533,7 +646,9 @@ class _ProductDialogState extends State<_ProductDialog> {
     _barcode = TextEditingController(text: product?.barcode ?? '');
     _unit = product?.unit ?? 'pcs';
     _sellingPrice = TextEditingController(
-      text: product == null ? '' : product.defaultSellingPrice.toStringAsFixed(2),
+      text: product == null
+          ? ''
+          : product.defaultSellingPrice.toStringAsFixed(2),
     );
     _buyingPrice = TextEditingController(
       text: product?.defaultBuyingPrice == null
@@ -578,7 +693,9 @@ class _ProductDialogState extends State<_ProductDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.product == null ? 'New library product' : 'Edit library product'),
+      title: Text(
+        widget.product == null ? 'New library product' : 'Edit library product',
+      ),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -594,7 +711,10 @@ class _ProductDialogState extends State<_ProductDialog> {
                     for (final category in widget.categories)
                       DropdownMenuItem(
                         value: category.id,
-                        child: Text(category.name, overflow: TextOverflow.ellipsis),
+                        child: Text(
+                          category.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                   ],
                   onChanged: (value) {
@@ -637,7 +757,10 @@ class _ProductDialogState extends State<_ProductDialog> {
                         : () async {
                             final name = _name.text.trim();
                             if (name.isEmpty) {
-                              setState(() => _suggestionStatus = 'Enter an English name first.');
+                              setState(
+                                () => _suggestionStatus =
+                                    'Enter an English name first.',
+                              );
                               return;
                             }
                             setState(() {
@@ -645,13 +768,17 @@ class _ProductDialogState extends State<_ProductDialog> {
                               _suggestionStatus = 'Contacting Gemini…';
                             });
                             try {
-                              final result = await TranslationService().suggest(name);
+                              final result = await TranslationService().suggest(
+                                name,
+                              );
                               if (!mounted) return;
                               setState(() {
-                                if (result.amharic != null && result.amharic!.trim().isNotEmpty) {
+                                if (result.amharic != null &&
+                                    result.amharic!.trim().isNotEmpty) {
                                   _nameAm.text = result.amharic!.trim();
                                 }
-                                if (result.oromo != null && result.oromo!.trim().isNotEmpty) {
+                                if (result.oromo != null &&
+                                    result.oromo!.trim().isNotEmpty) {
                                   _nameOr.text = result.oromo!.trim();
                                 }
                                 _suggesting = false;
@@ -663,7 +790,11 @@ class _ProductDialogState extends State<_ProductDialog> {
                                   _suggesting = false;
                                   _suggestionStatus = error.toString();
                                 });
-                                showAppSnack(context, error.toString(), error: true);
+                                showAppSnack(
+                                  context,
+                                  error.toString(),
+                                  error: true,
+                                );
                               }
                             }
                           },
@@ -674,19 +805,28 @@ class _ProductDialogState extends State<_ProductDialog> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.translate_rounded, size: 18),
-                    label: Text(_suggesting ? 'Suggesting…' : 'Suggest translations (Gemini)'),
+                    label: Text(
+                      _suggesting
+                          ? 'Suggesting…'
+                          : 'Suggest translations (Gemini)',
+                    ),
                   ),
                 ),
                 if (_suggestionStatus != null) ...[
                   const SizedBox(height: 8),
                   SelectableText(
                     _suggestionStatus!,
-                    style: const TextStyle(fontSize: 11.5, color: AdminColors.muted),
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AdminColors.muted,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   TextButton.icon(
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(text: _suggestionStatus!));
+                      Clipboard.setData(
+                        ClipboardData(text: _suggestionStatus!),
+                      );
                       showAppSnack(context, 'Copied.');
                     },
                     icon: const Icon(Icons.copy_rounded, size: 15),
@@ -710,7 +850,9 @@ class _ProductDialogState extends State<_ProductDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _barcode,
-                        decoration: const InputDecoration(labelText: 'Barcode (optional)'),
+                        decoration: const InputDecoration(
+                          labelText: 'Barcode (optional)',
+                        ),
                       ),
                     ),
                   ],
@@ -737,7 +879,9 @@ class _ProductDialogState extends State<_ProductDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _sellingPrice,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Default selling price',
                           prefixText: 'Br ',
@@ -756,7 +900,9 @@ class _ProductDialogState extends State<_ProductDialog> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _buyingPrice,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(
                     labelText: 'Default buying price (optional)',
                     prefixText: 'Br ',
@@ -776,7 +922,9 @@ class _ProductDialogState extends State<_ProductDialog> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Active'),
-                  subtitle: const Text('Inactive products are hidden from the library.'),
+                  subtitle: const Text(
+                    'Inactive products are hidden from the library.',
+                  ),
                   value: _active,
                   onChanged: (value) => setState(() => _active = value),
                 ),

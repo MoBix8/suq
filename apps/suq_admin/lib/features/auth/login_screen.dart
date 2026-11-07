@@ -48,6 +48,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() => _error = 'Enter the administrator phone number.');
       return;
     }
+
+    // Keep the phone number even when the PIN is missing or rejected.
+    await RememberedPhoneStore.write(phone);
+
     if (pin.length < 4) {
       setState(() => _error = 'Enter the administrator PIN.');
       return;
@@ -57,9 +61,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _submitting = true;
       _error = null;
     });
-
-    // Remember the phone number for next time, regardless of login outcome.
-    await RememberedPhoneStore.write(phone);
 
     try {
       await ref.read(sessionProvider.notifier).login(phone: phone, pin: pin);
@@ -96,11 +97,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   );
                   if (!wide) {
                     return Column(
-                      children: [
-                        brand,
-                        const SizedBox(height: 18),
-                        form,
-                      ],
+                      children: [brand, const SizedBox(height: 18), form],
                     );
                   }
                   return IntrinsicHeight(
@@ -364,10 +361,7 @@ class _LoginForm extends StatelessWidget {
           Text(
             'Server: ${AdminConfig.apiBaseUrl}',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AdminColors.muted,
-              fontSize: 10.5,
-            ),
+            style: const TextStyle(color: AdminColors.muted, fontSize: 10.5),
           ),
         ],
       ),
