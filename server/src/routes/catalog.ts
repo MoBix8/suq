@@ -8,9 +8,7 @@ import { prisma } from "../prisma";
 
 export const catalogRouter = Router();
 
-catalogRouter.use(requireAuth);
-catalogRouter.use(requireBoundDevice);
-catalogRouter.use((req, _res, next) => {
+catalogRouter.use("/library", requireAuth, requireBoundDevice, (req, _res, next) => {
   if (req.auth?.role !== "OWNER") return next(new AppError(403, "Shop owner access required"));
   next();
 });
