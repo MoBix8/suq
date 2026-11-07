@@ -21,6 +21,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   final _search = TextEditingController();
   String _query = '';
   bool _lowStockOnly = false;
+  int _page = 1;
+  static const _pageSize = 30;
 
   @override
   void dispose() {
@@ -97,20 +99,21 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final productsAsync = ref.watch(productsProvider);
+    final productsAsync = ref.watch(
+      productsProvider(ProductQuery(
+        query: _query,
+        lowStockOnly: _lowStockOnly,
+        page: _page,
+        pageSize: _pageSize,
+      )),
+    );
 
     return AsyncValueView<List<Product>>(
       value: productsAsync,
       loadingMessage: 'Loading your products…',
       onRetry: () => ref.invalidate(productsProvider),
       builder: (products) {
-        final query = _query.trim().toLowerCase();
-        final filtered = products.where((product) {
-          if (_lowStockOnly && !product.isLowStock) return false;
-          if (query.isEmpty) return true;
-          return product.name.toLowerCase().contains(query) ||
-              (product.barcode ?? '').toLowerCase().contains(query);
-        }).toList();
+        final filtered = products;
         final lowStockCount = products.where((product) => product.isLowStock).length;
 
         return RefreshIndicator(
@@ -137,7 +140,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 final wide = constraints.maxWidth > 620;
                                 final search = TextField(
                                   controller: _search,
-                                  onChanged: (value) => setState(() => _query = value),
+                                  onChanged: (value) => setState(() {
+                    _query = value;
+                    _page = 1;
+                  }),
                                   decoration: InputDecoration(
                                     hintText: 'Search products or barcode…',
                                     prefixIcon: const Icon(Icons.search_rounded),
@@ -196,12 +202,18 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 FilterChip(
                                   label: Text('All (${products.length})'),
                                   selected: !_lowStockOnly,
-                                  onSelected: (_) => setState(() => _lowStockOnly = false),
+                                  onSelected: (_) => setState(() {
+                                    _lowStockOnly = false;
+                                    _page = 1;
+                                  }),
                                 ),
                                 FilterChip(
                                   label: Text('Low stock ($lowStockCount)'),
                                   selected: _lowStockOnly,
-                                  onSelected: (_) => setState(() => _lowStockOnly = true),
+                                  onSelected: (_) => setState(() {
+                                    _lowStockOnly = true;
+                                    _page = 1;
+                                  }),
                                   avatar: lowStockCount > 0
                                       ? const Icon(
                                           Icons.warning_amber_rounded,
@@ -272,8 +284,30 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 .toList(),
                           ),
                         ),
-                    ],
-                  ),
+                        if (products.isNotEmpty && filtered.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: _page > 1
+                                      ? () => setState(() => _page -= 1)
+                                      : null,
+                                  child: const Text('Previous'),
+                                ),
+                                const SizedBox(width: 12),
+                                Text('Page $_page'),
+                                const SizedBox(width: 12),
+                                OutlinedButton(
+                                  onPressed: filtered.length >= _pageSize
+                                      ? () => setState(() => _page += 1)
+                                      : null,
+                                  child: const Text('Next'),
+                                ),
+                              ],
+                            ),
+                          ),
                 ),
               ),
             ],
