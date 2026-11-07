@@ -27,7 +27,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
   bool _inDateRange(SaleRecord sale) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final saleDay = DateTime(sale.soldAt.year, sale.soldAt.month, sale.soldAt.day);
+    final saleDay = DateTime(
+      sale.soldAt.year,
+      sale.soldAt.month,
+      sale.soldAt.day,
+    );
     switch (_dateFilter) {
       case 'today':
         return saleDay == today;
@@ -40,7 +44,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         return sale.soldAt.year == now.year && sale.soldAt.month == now.month;
       case 'custom':
         if (_customDate == null) return true;
-        final custom = DateTime(_customDate!.year, _customDate!.month, _customDate!.day);
+        final custom = DateTime(
+          _customDate!.year,
+          _customDate!.month,
+          _customDate!.day,
+        );
         return saleDay == custom;
       default:
         return true;
@@ -76,7 +84,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
           onRetry: () => ref.invalidate(salesHistoryProvider),
           builder: (sales) {
             final filtered = sales.where((sale) {
-              final hasCustomer = sale.customerName != null && sale.customerName!.trim().isNotEmpty;
+              final hasCustomer =
+                  sale.customerName != null &&
+                  sale.customerName!.trim().isNotEmpty;
               if (_filter == 'registered' && !hasCustomer) return false;
               if (_filter == 'walkin' && hasCustomer) return false;
               if (!_inDateRange(sale)) return false;
@@ -100,27 +110,32 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             ChoiceChip(
                               label: const Text('All dates'),
                               selected: _dateFilter == 'all',
-                              onSelected: (_) => setState(() => _dateFilter = 'all'),
+                              onSelected: (_) =>
+                                  setState(() => _dateFilter = 'all'),
                             ),
                             ChoiceChip(
                               label: const Text('Today'),
                               selected: _dateFilter == 'today',
-                              onSelected: (_) => setState(() => _dateFilter = 'today'),
+                              onSelected: (_) =>
+                                  setState(() => _dateFilter = 'today'),
                             ),
                             ChoiceChip(
                               label: const Text('Yesterday'),
                               selected: _dateFilter == 'yesterday',
-                              onSelected: (_) => setState(() => _dateFilter = 'yesterday'),
+                              onSelected: (_) =>
+                                  setState(() => _dateFilter = 'yesterday'),
                             ),
                             ChoiceChip(
                               label: const Text('This week'),
                               selected: _dateFilter == 'week',
-                              onSelected: (_) => setState(() => _dateFilter = 'week'),
+                              onSelected: (_) =>
+                                  setState(() => _dateFilter = 'week'),
                             ),
                             ChoiceChip(
                               label: const Text('This month'),
                               selected: _dateFilter == 'month',
-                              onSelected: (_) => setState(() => _dateFilter = 'month'),
+                              onSelected: (_) =>
+                                  setState(() => _dateFilter = 'month'),
                             ),
                             ActionChip(
                               label: Text(
@@ -128,7 +143,10 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                     ? '${_customDate!.day}/${_customDate!.month}/${_customDate!.year}'
                                     : 'Pick date',
                               ),
-                              avatar: const Icon(Icons.calendar_today_rounded, size: 16),
+                              avatar: const Icon(
+                                Icons.calendar_today_rounded,
+                                size: 16,
+                              ),
                               onPressed: _pickDate,
                             ),
                           ],
@@ -141,17 +159,20 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                             ChoiceChip(
                               label: const Text('All customers'),
                               selected: _filter == 'all',
-                              onSelected: (_) => setState(() => _filter = 'all'),
+                              onSelected: (_) =>
+                                  setState(() => _filter = 'all'),
                             ),
                             ChoiceChip(
                               label: const Text('Registered'),
                               selected: _filter == 'registered',
-                              onSelected: (_) => setState(() => _filter = 'registered'),
+                              onSelected: (_) =>
+                                  setState(() => _filter = 'registered'),
                             ),
                             ChoiceChip(
                               label: const Text('Walk-in'),
                               selected: _filter == 'walkin',
-                              onSelected: (_) => setState(() => _filter = 'walkin'),
+                              onSelected: (_) =>
+                                  setState(() => _filter = 'walkin'),
                             ),
                           ],
                         ),
@@ -160,7 +181,8 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                           const EmptyState(
                             icon: Icons.receipt_long_outlined,
                             title: 'No sales yet',
-                            message: 'Sales you make will appear here with their items.',
+                            message:
+                                'Sales you make will appear here with their items.',
                           )
                         else
                           ...filtered.map((sale) => _SaleTile(sale: sale)),
@@ -187,15 +209,49 @@ class _SaleTile extends ConsumerStatefulWidget {
 }
 
 class _SaleTileState extends ConsumerState<_SaleTile> {
-  bool _expanded = false;
   List<SaleItemRecord>? _items;
   bool _loading = false;
+
+  Future<void> _returnSale() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Return this sale?'),
+        content: const Text(
+          'Stock will be restocked and customer credit adjusted. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Return sale'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(salesRepositoryProvider).returnSale(widget.sale.id);
+      ref.invalidate(salesHistoryProvider);
+      ref.invalidate(customersProvider);
+      ref.invalidate(dashboardProvider);
+      ref.invalidate(reportProvider);
+      if (mounted) showAppSnack(context, 'Sale returned.');
+    } catch (e) {
+      if (mounted) showAppSnack(context, 'Could not return: $e', error: true);
+    }
+  }
 
   Future<void> _loadItems() async {
     if (_items != null) return;
     setState(() => _loading = true);
     try {
-      final items = await ref.read(salesRepositoryProvider).itemsForSale(widget.sale.id);
+      final items = await ref
+          .read(salesRepositoryProvider)
+          .itemsForSale(widget.sale.id);
       if (mounted) {
         setState(() {
           _items = items;
@@ -214,7 +270,6 @@ class _SaleTileState extends ConsumerState<_SaleTile> {
       margin: const EdgeInsets.only(bottom: 10),
       child: ExpansionTile(
         onExpansionChanged: (expanded) {
-          setState(() => _expanded = expanded);
           if (expanded) _loadItems();
         },
         title: Text(
@@ -225,20 +280,40 @@ class _SaleTileState extends ConsumerState<_SaleTile> {
           '${sale.receiptNo} • ${formatDateTime(sale.soldAt)}',
           style: const TextStyle(fontSize: 11, color: AppColors.muted),
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              money(sale.total),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  money(sale.total),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (sale.returned)
+                  const Text(
+                    'Returned',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.warning),
+                  )
+                else if (sale.credit > 0)
+                  Text(
+                    '${money(sale.credit)} credit',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppColors.warning,
+                    ),
+                  ),
+              ],
             ),
-            if (sale.returned)
-              const Text('Returned', style: TextStyle(fontSize: 10.5, color: AppColors.warning))
-            else if (sale.credit > 0)
-              Text(
-                '${money(sale.credit)} credit',
-                style: const TextStyle(fontSize: 10.5, color: AppColors.warning),
+            if (!sale.returned)
+              IconButton(
+                tooltip: 'Return sale',
+                onPressed: _returnSale,
+                icon: const Icon(Icons.undo_rounded),
               ),
           ],
         ),
@@ -251,7 +326,10 @@ class _SaleTileState extends ConsumerState<_SaleTile> {
           else if (_items == null || _items!.isEmpty)
             const Padding(
               padding: EdgeInsets.all(16),
-              child: Text('No items recorded.', style: TextStyle(color: AppColors.muted)),
+              child: Text(
+                'No items recorded.',
+                style: TextStyle(color: AppColors.muted),
+              ),
             )
           else
             Padding(
@@ -259,56 +337,6 @@ class _SaleTileState extends ConsumerState<_SaleTile> {
               child: Column(
                 children: _items!.map((item) => _ItemRow(item: item)).toList(),
               ),
-            ),
-          if (!widget.sale.returned)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Return this sale?'),
-                        content: const Text(
-                          'Stock will be restocked and credit adjusted. This cannot be undone.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.of(ctx).pop(true),
-                            child: const Text('Return'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirmed != true) return;
-                    try {
-                      await ref.read(salesRepositoryProvider).returnSale(widget.sale.id);
-                      ref.invalidate(salesHistoryProvider);
-                      ref.invalidate(customersProvider);
-                      ref.invalidate(dashboardProvider);
-                      ref.invalidate(reportProvider);
-                      if (mounted) {
-                        showAppSnack(context, 'Sale returned.');
-                      }
-                    } catch (e) {
-                      if (mounted) showAppSnack(context, 'Could not return: $e', error: true);
-                    }
-                  },
-                  icon: const Icon(Icons.undo_rounded, size: 18),
-                  label: const Text('Return sale'),
-                ),
-              ),
-            )
-          else
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text('Returned', style: TextStyle(color: AppColors.warning, fontWeight: FontWeight.w700)),
             ),
         ],
       ),

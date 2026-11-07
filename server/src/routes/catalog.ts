@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireBoundDevice } from "../auth";
-import { asyncHandler } from "../errors";
+import { AppError, asyncHandler } from "../errors";
 import { pageMeta, pageParams } from "../lib/pagination";
 import { prisma } from "../prisma";
 
@@ -10,19 +10,30 @@ export const catalogRouter = Router();
 
 catalogRouter.use(requireAuth);
 catalogRouter.use(requireBoundDevice);
+catalogRouter.use((req, _res, next) => {
+  if (req.auth?.role !== "OWNER") return next(new AppError(403, "Shop owner access required"));
+  next();
+});
 
 catalogRouter.get(
   "/library/categories",
   asyncHandler(async (req, res) => {
     const paging = pageParams(req.query as Record<string, unknown>, 100, 200);
     const [total, categories] = await Promise.all([
-      prisma.category.count(),
+      prisma.category.count({ where: { products: { some: { active: true, listings: { some: { active: true } } } } } }),
       prisma.category.findMany({
+        where: { products: { some: { active: true, listings: { some: { active: true } } } } },
         skip: paging.skip,
         take: paging.take,
         orderBy: { sortOrder: "asc" },
         include: {
-          _count: { select: { products: { where: { active: true } } } },
+          _count: {
+            select: {
+              products: {
+                where: { active: true, listings: { some: { active: true } } },
+              },
+            },
+          },
         },
       }),
     ]);
@@ -52,6 +63,7 @@ catalogRouter.get(
     const paging = pageParams(req.query as Record<string, unknown>, 50, 500);
     const where: Prisma.ProductLibraryItemWhereInput = {
       active: true,
+      listings: { some: { active: true } },
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.updatedSince ? { updatedAt: { gt: new Date(query.updatedSince) } } : {}),
       ...(query.q

@@ -100,6 +100,53 @@ adminRouter.get(
   }),
 );
 
+const supplierCreateSchema = z.object({
+  phone: phoneSchema,
+  pin: pinSchema,
+  name: z.string().trim().min(2).max(80),
+  businessName: z.string().trim().min(2).max(120),
+});
+
+adminRouter.post(
+  "/suppliers",
+  asyncHandler(async (req, res) => {
+    const body = supplierCreateSchema.parse(req.body);
+    if (await prisma.user.findUnique({ where: { phone: body.phone } })) {
+      throw new AppError(409, "An account with this phone already exists");
+    }
+    const user = await prisma.user.create({
+      data: {
+        phone: body.phone,
+        pinHash: await bcrypt.hash(body.pin, 10),
+        name: body.name,
+        role: "SUPPLIER",
+        supplier: { create: { businessName: body.businessName } },
+      },
+      include: { supplier: true },
+    });
+    res.status(201).json({
+      supplier: {
+        id: user.supplier!.id,
+        userId: user.id,
+        phone: user.phone,
+        name: user.name,
+        businessName: user.supplier!.businessName,
+      },
+    });
+  }),
+);
+
+adminRouter.get(
+  "/suppliers",
+  asyncHandler(async (_req, res) => {
+    const suppliers = await prisma.supplier.findMany({
+      include: { user: { select: { id: true, name: true, phone: true, createdAt: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ suppliers });
+  }),
+);
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 adminRouter.get(

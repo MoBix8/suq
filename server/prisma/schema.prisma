@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-1.1.x", "rhel-openssl-3.0.x"]
 }
 
@@ -11,27 +11,30 @@ datasource db {
 // ─── Identity ────────────────────────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  phone     String   @unique
+  id        String    @id @default(cuid())
+  phone     String    @unique
   pinHash   String
   name      String
-  role      String   @default("OWNER") // OWNER | ADMIN
+  role      String    @default("OWNER") // OWNER | ADMIN | SUPPLIER
   shop      Shop?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  supplier  Supplier?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model Shop {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   city          String?
   subcity       String?
   phone         String?
+  latitude      Float?
+  longitude     Float?
   boundDeviceId String?
   createdAt     DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt     DateTime @updatedAt
 
   subscriptions Subscription[]
   payments      Payment[]
@@ -41,6 +44,27 @@ model Shop {
   products      ShopProduct[]
   creditEntries CreditEntry[]
   syncLogs      SyncLog[]
+  orders        ShopOrder[]
+}
+
+model Supplier {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName          String
+  latitude              Float?
+  longitude             Float?
+  deliveryBaseFee       Float    @default(0)
+  deliveryPerKm         Float    @default(0)
+  deliveryPerKg         Float    @default(0)
+  deliveryPerCubicMeter Float    @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  categories Category[]
+  products   ProductLibraryItem[]
+  listings   SupplierListing[]
+  orders     ShopOrder[]
 }
 
 model Device {
@@ -133,36 +157,103 @@ model Payment {
 // ─── Product library ─────────────────────────────────────────────────────────
 
 model Category {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  slug      String   @unique
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name       String
+  slug       String
+  sortOrder  Int       @default(0)
+  createdAt  DateTime  @default(now())
 
   products ProductLibraryItem[]
+
+  @@unique([supplierId, name])
+  @@unique([supplierId, slug])
 }
 
 model ProductLibraryItem {
-  id                  String   @id @default(cuid())
-  sku                 String   @unique
+  id                  String    @id @default(cuid())
+  sku                 String    @unique
   categoryId          String
-  category            Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category            Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   name                String
   nameAm              String?
   nameOr              String?
   barcode             String?
-  unit                String   @default("pcs")
+  unit                String    @default("pcs")
   defaultSellingPrice Float
   defaultBuyingPrice  Float?
-  active              Boolean  @default(true)
-  version             Int      @default(1)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  active              Boolean   @default(true)
+  supplierId          String?
+  supplier            Supplier? @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   shopProducts ShopProduct[]
+  listings     SupplierListing[]
 
   @@index([categoryId])
   @@index([updatedAt])
+}
+
+model SupplierListing {
+  id           String             @id @default(cuid())
+  supplierId   String
+  supplier     Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productId    String
+  product      ProductLibraryItem @relation(fields: [productId], references: [id], onDelete: Cascade)
+  packName     String
+  unitsPerPack Float
+  weightKg     Float              @default(0)
+  volumeCubicM Float              @default(0)
+  bulkPrice    Float
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([supplierId, productId])
+  @@index([supplierId, active])
+}
+
+model ShopOrder {
+  id                 String          @id @default(cuid())
+  shopId             String
+  shop               Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplierId         String
+  supplier           Supplier        @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  status             String          @default("PENDING") // PENDING | ACCEPTED | REJECTED | READY | DELIVERED | CANCELLED
+  subtotal           Float
+  deliveryFee        Float
+  total              Float
+  deliveryDistanceKm Float?
+  deliveryQuoted     Boolean         @default(false)
+  shippingWeightKg   Float
+  shippingVolumeM3   Float
+  note               String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  items              ShopOrderItem[]
+
+  @@index([shopId, createdAt])
+  @@index([supplierId, status, createdAt])
+}
+
+model ShopOrderItem {
+  id           String    @id @default(cuid())
+  orderId      String
+  order        ShopOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String?
+  productName  String
+  sku          String
+  retailUnit   String
+  packName     String
+  unitsPerPack Float
+  packageCount Int
+  unitPrice    Float
+  lineTotal    Float
+  weightKg     Float
+  volumeCubicM Float
 }
 
 // ─── Shop data (mirrored from devices) ───────────────────────────────────────
@@ -209,24 +300,24 @@ model Customer {
 }
 
 model Sale {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   shopId        String
-  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   receiptNo     String
   customerId    String?
   customer      Customer? @relation(fields: [customerId], references: [id])
   customerName  String?
   subtotal      Float
-  discount      Float    @default(0)
+  discount      Float     @default(0)
   total         Float
   paid          Float
-  credit        Float    @default(0)
-  cost          Float    @default(0)
-  profit        Float    @default(0)
+  credit        Float     @default(0)
+  cost          Float     @default(0)
+  profit        Float     @default(0)
   paymentMethod String
-  returned      Boolean  @default(false)
+  returned      Boolean   @default(false)
   soldAt        DateTime
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
   items         SaleItem[]
   creditEntries CreditEntry[]

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -151,7 +150,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         const Center(
                           child: Text(
                             'Offline shop management for Ethiopia',
-                            style: TextStyle(color: AppColors.muted, fontSize: 14),
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 28),
@@ -170,7 +172,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   ButtonSegment(
                                     value: true,
                                     label: Text('Create shop'),
-                                    icon: Icon(Icons.add_business_rounded, size: 18),
+                                    icon: Icon(
+                                      Icons.add_business_rounded,
+                                      size: 18,
+                                    ),
                                   ),
                                 ],
                                 selected: {_register},
@@ -191,12 +196,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   textCapitalization: TextCapitalization.words,
                                   decoration: const InputDecoration(
                                     labelText: 'Your name',
-                                    prefixIcon: Icon(Icons.person_outline_rounded),
+                                    prefixIcon: Icon(
+                                      Icons.person_outline_rounded,
+                                    ),
                                   ),
                                   validator: (value) =>
                                       (value?.trim().length ?? 0) < 2
-                                          ? 'Enter your name'
-                                          : null,
+                                      ? 'Enter your name'
+                                      : null,
                                 ),
                                 const SizedBox(height: 14),
                                 TextFormField(
@@ -209,8 +216,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   ),
                                   validator: (value) =>
                                       (value?.trim().length ?? 0) < 2
-                                          ? 'Enter your shop name'
-                                          : null,
+                                      ? 'Enter your shop name'
+                                      : null,
                                 ),
                                 const SizedBox(height: 14),
                                 TextFormField(
@@ -219,7 +226,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   textCapitalization: TextCapitalization.words,
                                   decoration: const InputDecoration(
                                     labelText: 'City (optional)',
-                                    prefixIcon: Icon(Icons.location_on_outlined),
+                                    prefixIcon: Icon(
+                                      Icons.location_on_outlined,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 14),
@@ -244,7 +253,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 onFieldSubmitted: (_) => _submit(),
                                 decoration: InputDecoration(
                                   labelText: 'PIN',
-                                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                                  prefixIcon: const Icon(
+                                    Icons.lock_outline_rounded,
+                                  ),
                                   suffixIcon: IconButton(
                                     onPressed: () => setState(
                                       () => _obscurePin = !_obscurePin,
@@ -263,11 +274,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: AppColors.loss.withValues(alpha: 0.07),
+                                    color: AppColors.loss.withValues(
+                                      alpha: 0.07,
+                                    ),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       const Icon(
                                         Icons.error_outline_rounded,
@@ -301,31 +315,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                           color: Colors.white,
                                         ),
                                       )
-                                    : Text(_register ? 'Create my shop' : 'Log in'),
+                                    : Text(
+                                        _register ? 'Create my shop' : 'Log in',
+                                      ),
                               ),
                             ],
                           ),
                         ),
-                        if (kDebugMode) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.65),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppColors.border),
-                            ),
-                            child: const Text(
-                              'Demo owner: 0911111111 / 1234\n'
-                              'Demo admin: 0900000000 / 1234',
-                              style: TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 12,
-                                height: 1.5,
-                              ),
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 20),
                         const Row(
                           mainAxisAlignment: MainAxisAlignment.center,

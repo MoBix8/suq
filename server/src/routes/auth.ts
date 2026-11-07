@@ -82,7 +82,7 @@ authRouter.post(
     const body = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({
       where: { phone: body.phone },
-      include: { shop: true },
+      include: { shop: true, supplier: true },
     });
     if (!user) throw new AppError(401, "Wrong phone number or PIN");
 
@@ -136,8 +136,9 @@ authRouter.post(
     const subscription = user.shop ? await latestSubscription(user.shop.id) : null;
     const token = signToken({
       userId: user.id,
-      role: user.role as "OWNER" | "ADMIN",
+      role: user.role as "OWNER" | "ADMIN" | "SUPPLIER",
       shopId: user.shop?.id,
+      ...(user.supplier ? { supplierId: user.supplier.id } : {}),
       ...(deviceId ? { deviceId } : {}),
     });
 
@@ -145,6 +146,7 @@ authRouter.post(
       token,
       user: publicUser(user),
       shop: user.shop,
+      supplier: user.supplier,
       subscription: toSubscriptionDto(subscription),
       serverTime: new Date().toISOString(),
     });

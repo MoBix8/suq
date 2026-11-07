@@ -12,7 +12,12 @@ class ProductRepository {
 
   Database get _db => _appDb.db;
 
-  Future<List<Product>> list({String query = '', bool lowStockOnly = false}) async {
+  Future<List<Product>> list({
+    String query = '',
+    bool lowStockOnly = false,
+    int page = 1,
+    int pageSize = 30,
+  }) async {
     final clauses = <String>['deleted = 0'];
     final args = <Object?>[];
     final trimmed = query.trim();
@@ -28,18 +33,33 @@ class ProductRepository {
       where: clauses.join(' AND '),
       whereArgs: args,
       orderBy: 'name COLLATE NOCASE ASC',
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
     );
     return rows.map(Product.fromMap).toList();
+  }
+
+  Future<int> count({String query = '', bool lowStockOnly = false}) async {
+    final clauses = <String>['deleted = 0'];
+    final args = <Object?>[];
+    final trimmed = query.trim();
+    if (trimmed.isNotEmpty) {
+      clauses.add("(name LIKE ? OR IFNULL(barcode, '') LIKE ?)");
+      args.addAll(['%$trimmed%', '%$trimmed%']);
+    }
+    if (lowStockOnly) {
+      clauses.add('track_stock = 1 AND stock_qty <= low_stock_threshold');
+    }
+    final rows = await _db.rawQuery(
+      'SELECT COUNT(*) AS c FROM products WHERE ${clauses.join(' AND ')}',
+      args,
+    );
+    return asInt(rows.first['c']);
   }
 
   Future<Product?> byId(String id) async {
     final rows = await _db.query('products', where: 'id = ?', whereArgs: [id], limit: 1);
     return rows.isEmpty ? null : Product.fromMap(rows.first);
-  }
-
-  Future<int> count() async {
-    final rows = await _db.rawQuery('SELECT COUNT(*) AS c FROM products WHERE deleted = 0');
-    return asInt(rows.first['c']);
   }
 
   Future<Set<String>> libraryIds() async {

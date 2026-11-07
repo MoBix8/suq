@@ -6,8 +6,9 @@ import { prisma } from "./prisma";
 
 export type AuthClaims = {
   userId: string;
-  role: "OWNER" | "ADMIN";
+  role: "OWNER" | "ADMIN" | "SUPPLIER";
   shopId?: string;
+  supplierId?: string;
   deviceId?: string;
 };
 
@@ -40,6 +41,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
       userId: decoded.userId,
       role: decoded.role,
       shopId: decoded.shopId,
+      supplierId: decoded.supplierId,
       deviceId: decoded.deviceId,
     };
     next();
@@ -74,7 +76,7 @@ export async function requireBoundDevice(
   try {
     const auth = req.auth;
     if (!auth) throw new AppError(401, "Not authenticated");
-    if (auth.role === "ADMIN") {
+    if (auth.role !== "OWNER") {
       next();
       return;
     }
@@ -104,6 +106,15 @@ export async function requireBoundDevice(
 
 export function requireShop(req: Request): AuthClaims & { shopId: string } {
   if (!req.auth) throw new AppError(401, "Not authenticated");
+  if (req.auth.role !== "OWNER") throw new AppError(403, "Shop owner access required");
   if (!req.auth.shopId) throw new AppError(403, "No shop linked to this account");
   return req.auth as AuthClaims & { shopId: string };
+}
+
+export function requireSupplier(req: Request): AuthClaims & { supplierId: string } {
+  if (!req.auth) throw new AppError(401, "Not authenticated");
+  if (req.auth.role !== "SUPPLIER" || !req.auth.supplierId) {
+    throw new AppError(403, "Supplier access required");
+  }
+  return req.auth as AuthClaims & { supplierId: string };
 }

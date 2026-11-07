@@ -87,25 +87,83 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       _refresh();
       if (mounted) showAppSnack(context, '${product.name} removed.');
     } catch (error) {
-      if (mounted) showAppSnack(context, 'Could not remove: $error', error: true);
+      if (mounted)
+        showAppSnack(context, 'Could not remove: $error', error: true);
+    }
+  }
+
+  Future<void> _quickPrice(Product product) async {
+    final controller = TextEditingController(
+      text: product.sellingPrice.toStringAsFixed(2),
+    );
+    final price = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Set price · ${product.name}'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+          ],
+          decoration: InputDecoration(
+            labelText: 'Price per ${product.unit}',
+            prefixText: 'Br ',
+          ),
+          onSubmitted: (_) => Navigator.pop(
+            dialogContext,
+            double.tryParse(controller.text.trim()),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              double.tryParse(controller.text.trim()),
+            ),
+            child: const Text('Save price'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (price == null || price < 0 || !mounted) return;
+    try {
+      await ref
+          .read(productRepositoryProvider)
+          .save(
+            product.copyWith(sellingPrice: price, updatedAt: DateTime.now()),
+          );
+      _refresh();
+      if (mounted) showAppSnack(context, 'Price updated.');
+    } catch (error) {
+      if (mounted)
+        showAppSnack(context, 'Could not update price: $error', error: true);
     }
   }
 
   void _openLibrary() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LibraryScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const LibraryScreen()));
   }
 
   @override
   Widget build(BuildContext context) {
     final productsAsync = ref.watch(
-      productsProvider(ProductQuery(
-        query: _query,
-        lowStockOnly: _lowStockOnly,
-        page: _page,
-        pageSize: _pageSize,
-      )),
+      productsProvider(
+        ProductQuery(
+          query: _query,
+          lowStockOnly: _lowStockOnly,
+          page: _page,
+          pageSize: _pageSize,
+        ),
+      ),
     );
 
     return AsyncValueView<List<Product>>(
@@ -114,12 +172,23 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       onRetry: () => ref.invalidate(productsProvider),
       builder: (products) {
         final filtered = products;
-        final lowStockCount = products.where((product) => product.isLowStock).length;
+        final lowStockCount = products
+            .where((product) => product.isLowStock)
+            .length;
 
         return RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(productsProvider);
-            await ref.read(productsProvider.future);
+            await ref.read(
+              productsProvider(
+                ProductQuery(
+                  query: _query,
+                  lowStockOnly: _lowStockOnly,
+                  page: _page,
+                  pageSize: _pageSize,
+                ),
+              ).future,
+            );
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -141,12 +210,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 final search = TextField(
                                   controller: _search,
                                   onChanged: (value) => setState(() {
-                    _query = value;
-                    _page = 1;
-                  }),
+                                    _query = value;
+                                    _page = 1;
+                                  }),
                                   decoration: InputDecoration(
                                     hintText: 'Search products or barcode…',
-                                    prefixIcon: const Icon(Icons.search_rounded),
+                                    prefixIcon: const Icon(
+                                      Icons.search_rounded,
+                                    ),
                                     suffixIcon: _query.isEmpty
                                         ? null
                                         : IconButton(
@@ -154,7 +225,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                               _search.clear();
                                               setState(() => _query = '');
                                             },
-                                            icon: const Icon(Icons.close_rounded),
+                                            icon: const Icon(
+                                              Icons.close_rounded,
+                                            ),
                                           ),
                                   ),
                                 );
@@ -164,19 +237,26 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                   children: [
                                     OutlinedButton.icon(
                                       onPressed: _openLibrary,
-                                      icon: const Icon(Icons.storefront_outlined, size: 19),
+                                      icon: const Icon(
+                                        Icons.storefront_outlined,
+                                        size: 19,
+                                      ),
                                       label: const Text('SUQ library'),
                                     ),
                                     FilledButton.icon(
                                       onPressed: () => _openEditor(),
-                                      icon: const Icon(Icons.add_rounded, size: 20),
+                                      icon: const Icon(
+                                        Icons.add_rounded,
+                                        size: 20,
+                                      ),
                                       label: const Text('Add product'),
                                     ),
                                   ],
                                 );
                                 if (!wide) {
                                   return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
                                     children: [
                                       search,
                                       const SizedBox(height: 10),
@@ -248,7 +328,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                             children: [
                               OutlinedButton.icon(
                                 onPressed: _openLibrary,
-                                icon: const Icon(Icons.storefront_outlined, size: 19),
+                                icon: const Icon(
+                                  Icons.storefront_outlined,
+                                  size: 19,
+                                ),
                                 label: const Text('Browse library'),
                               ),
                               FilledButton.icon(
@@ -278,36 +361,39 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                   (product) => _ProductRow(
                                     product: product,
                                     onEdit: () => _openEditor(product),
+                                    onPrice: () => _quickPrice(product),
                                     onDelete: () => _delete(product),
                                   ),
                                 )
                                 .toList(),
                           ),
                         ),
-                        if (products.isNotEmpty && filtered.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                OutlinedButton(
-                                  onPressed: _page > 1
-                                      ? () => setState(() => _page -= 1)
-                                      : null,
-                                  child: const Text('Previous'),
-                                ),
-                                const SizedBox(width: 12),
-                                Text('Page $_page'),
-                                const SizedBox(width: 12),
-                                OutlinedButton(
-                                  onPressed: filtered.length >= _pageSize
-                                      ? () => setState(() => _page += 1)
-                                      : null,
-                                  child: const Text('Next'),
-                                ),
-                              ],
-                            ),
+                      if (products.isNotEmpty && filtered.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              OutlinedButton(
+                                onPressed: _page > 1
+                                    ? () => setState(() => _page -= 1)
+                                    : null,
+                                child: const Text('Previous'),
+                              ),
+                              const SizedBox(width: 12),
+                              Text('Page $_page'),
+                              const SizedBox(width: 12),
+                              OutlinedButton(
+                                onPressed: filtered.length >= _pageSize
+                                    ? () => setState(() => _page += 1)
+                                    : null,
+                                child: const Text('Next'),
+                              ),
+                            ],
                           ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -328,15 +414,18 @@ String _productDisplayName(Product product) {
   }
   return parts.join(' / ');
 }
+
 class _ProductRow extends StatelessWidget {
   const _ProductRow({
     required this.product,
     required this.onEdit,
+    required this.onPrice,
     required this.onDelete,
   });
 
   final Product product;
   final VoidCallback onEdit;
+  final VoidCallback onPrice;
   final VoidCallback onDelete;
 
   @override
@@ -396,6 +485,15 @@ class _ProductRow extends StatelessWidget {
             '${product.barcode == null ? '' : ' • ${product.barcode}'}',
             style: const TextStyle(fontSize: 12, color: AppColors.muted),
           ),
+          TextButton.icon(
+            onPressed: onPrice,
+            icon: const Icon(Icons.price_change_outlined, size: 16),
+            label: const Text('Change price'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              minimumSize: const Size(0, 32),
+            ),
+          ),
           const SizedBox(height: 3),
           Wrap(
             spacing: 10,
@@ -418,7 +516,9 @@ class _ProductRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: product.isLowStock ? AppColors.warning : AppColors.profit,
+                    color: product.isLowStock
+                        ? AppColors.warning
+                        : AppColors.profit,
                   ),
                 ),
               if (product.isLowStock)
@@ -459,7 +559,11 @@ class _ProductRow extends StatelessWidget {
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.delete_outline_rounded, size: 19, color: AppColors.loss),
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                size: 19,
+                color: AppColors.loss,
+              ),
               title: Text('Remove', style: TextStyle(color: AppColors.loss)),
             ),
           ),
@@ -550,8 +654,9 @@ class _ProductEditorDialogState extends State<_ProductEditorDialog> {
     final stock = _trackStock
         ? (double.tryParse(_stock.text.trim()) ?? 0)
         : (widget.product?.stockQty ?? 0);
-    final threshold =
-        _trackStock ? (double.tryParse(_threshold.text.trim()) ?? 0) : 0.0;
+    final threshold = _trackStock
+        ? (double.tryParse(_threshold.text.trim()) ?? 0)
+        : 0.0;
     final now = DateTime.now();
 
     final Product product;
@@ -629,7 +734,9 @@ class _ProductEditorDialogState extends State<_ProductEditorDialog> {
                   Expanded(
                     child: TextField(
                       controller: _selling,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                       ],
@@ -641,17 +748,33 @@ class _ProductEditorDialogState extends State<_ProductEditorDialog> {
                   ),
                 ],
               ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: ['pcs', 'kg', 'g', 'L', 'ml']
+                    .map(
+                      (unit) => ActionChip(
+                        label: Text(unit),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => setState(() => _unit.text = unit),
+                      ),
+                    )
+                    .toList(),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _buying,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                 ],
                 decoration: const InputDecoration(
                   labelText: 'Buying price (optional)',
                   prefixText: 'Br ',
-                  helperText: 'Used to calculate profit. Leave empty if unknown.',
+                  helperText:
+                      'Used to calculate profit. Leave empty if unknown.',
                 ),
               ),
               const SizedBox(height: 6),
@@ -675,20 +798,24 @@ class _ProductEditorDialogState extends State<_ProductEditorDialog> {
                     Expanded(
                       child: TextField(
                         controller: _stock,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         inputFormatters: [
                           FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                         ],
-                        decoration: const InputDecoration(labelText: 'In stock'),
+                        decoration: const InputDecoration(
+                          labelText: 'In stock',
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextField(
                         controller: _threshold,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         inputFormatters: [
                           FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                         ],

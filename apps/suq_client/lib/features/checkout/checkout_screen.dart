@@ -28,7 +28,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 
   Future<void> _chooseCustomer(CartTab tab) async {
-    final customers = ref.read(customersProvider).asData?.value ??
+    final customers =
+        ref.read(customersProvider).asData?.value ??
         await ref.read(customerRepositoryProvider).list();
     if (!mounted) return;
 
@@ -59,7 +60,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   const EmptyState(
                     icon: Icons.people_outline_rounded,
                     title: 'No customers yet',
-                    message: 'Add customers from the Customers tab to track credit.',
+                    message:
+                        'Add customers from the Customers tab to track credit.',
                   )
                 else
                   Flexible(
@@ -70,7 +72,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         final customer = customers[index];
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: AppColors.seed.withValues(alpha: 0.1),
+                            backgroundColor: AppColors.seed.withValues(
+                              alpha: 0.1,
+                            ),
                             child: Text(
                               customer.name.isEmpty
                                   ? '?'
@@ -87,12 +91,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                 ? 'Owes ${money(customer.creditBalance)}'
                                 : customer.phone ?? 'No phone',
                             style: TextStyle(
-                              color: customer.owes ? AppColors.warning : AppColors.muted,
+                              color: customer.owes
+                                  ? AppColors.warning
+                                  : AppColors.muted,
                               fontSize: 12,
                             ),
                           ),
                           trailing: tab.customerId == customer.id
-                              ? const Icon(Icons.check_circle_rounded, color: AppColors.seed)
+                              ? const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: AppColors.seed,
+                                )
                               : null,
                           onTap: () => Navigator.of(context).pop(customer.id),
                         );
@@ -128,7 +137,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           controller: controller,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+          ],
           decoration: const InputDecoration(
             labelText: 'Discount amount',
             prefixText: 'Br ',
@@ -142,7 +153,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           FilledButton(
             onPressed: () {
               final parsed = double.tryParse(controller.text.trim()) ?? 0;
-              Navigator.of(context).pop(parsed.clamp(0, tab.subtotal).toDouble());
+              Navigator.of(
+                context,
+              ).pop(parsed.clamp(0, tab.subtotal).toDouble());
             },
             child: const Text('Apply'),
           ),
@@ -158,7 +171,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Future<void> _checkout(CartTab cart) async {
     Customer? customer;
     if (cart.customerId != null) {
-      customer = await ref.read(customerRepositoryProvider).byId(cart.customerId!);
+      customer = await ref
+          .read(customerRepositoryProvider)
+          .byId(cart.customerId!);
     }
     if (!mounted) return;
 
@@ -173,7 +188,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     if (paid == null || !mounted) return;
 
     try {
-      final result = await ref.read(salesRepositoryProvider).checkout(
+      final result = await ref
+          .read(salesRepositoryProvider)
+          .checkout(
             cart: cart,
             customer: customer,
             walkInName: customer == null ? 'Walk-in customer' : null,
@@ -188,9 +205,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (customer != null) {
         ref.invalidate(customerDetailProvider(customer.id));
       }
-      unawaited(
-        ref.read(syncRepositoryProvider).flush().catchError((_) => 0),
-      );
+      unawaited(ref.read(syncRepositoryProvider).flush().catchError((_) => 0));
 
       if (!mounted) return;
       await showDialog<void>(
@@ -208,16 +223,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     final cartState = ref.watch(cartProvider);
     final cart = cartState.active;
-    final products = ref.watch(productsProvider).asData?.value ?? const <Product>[];
+    const allProductsQuery = ProductQuery(pageSize: 1000);
+    final products =
+        ref.watch(productsProvider(allProductsQuery)).asData?.value ??
+        const <Product>[];
     final query = _query.trim().toLowerCase();
-    final results = (query.isEmpty
-            ? products
-            : products.where((product) {
-                return product.name.toLowerCase().contains(query) ||
-                    (product.barcode ?? '').contains(query);
-              }).toList())
-        .take(30)
-        .toList();
+    final results =
+        (query.isEmpty
+                ? products
+                : products.where((product) {
+                    return product.name.toLowerCase().contains(query) ||
+                        (product.barcode ?? '').contains(query);
+                  }).toList())
+            .take(30)
+            .toList();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -252,15 +271,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       onRemove: (id) =>
                           ref.read(cartProvider.notifier).removeLine(id),
                       onCheckout: () => _checkout(cart),
-                      onClear: () => ref.read(cartProvider.notifier).clearActive(),
+                      onClear: () =>
+                          ref.read(cartProvider.notifier).clearActive(),
                     );
                     if (!wide) {
                       return Column(
-                        children: [
-                          left,
-                          const SizedBox(height: 14),
-                          right,
-                        ],
+                        children: [left, const SizedBox(height: 14), right],
                       );
                     }
                     return Row(
@@ -393,7 +409,8 @@ class _ProductPicker extends StatelessWidget {
             const EmptyState(
               icon: Icons.inventory_2_outlined,
               title: 'No products yet',
-              message: 'Open the Products tab and download the SUQ library to start selling.',
+              message:
+                  'Open the Products tab and download the SUQ library to start selling.',
             )
           else if (products.isEmpty)
             const Padding(
@@ -422,20 +439,29 @@ class _ProductPicker extends StatelessWidget {
                     onTap: () => onAdd(product),
                     title: Text(
                       product.name,
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     subtitle: Text(
                       '${money(product.sellingPrice)} / ${product.unit}'
                       '${product.trackStock ? ' • ${qty(product.stockQty)} in stock' : ''}'
                       '${product.buyingPrice == null ? ' • no cost set' : ''}',
-                      style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.muted,
+                      ),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (inCart > 0)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.seed.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(20),
@@ -495,7 +521,10 @@ class _CartPanel extends StatelessWidget {
             children: [
               Text(
                 cart.label,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const Spacer(),
               if (cart.lines.isNotEmpty)
@@ -523,7 +552,10 @@ class _CartPanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       cart.customerName ?? 'Walk-in customer',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   const Text(
@@ -581,8 +613,8 @@ class _CartPanel extends StatelessWidget {
                         ),
                         _QtyStepper(
                           value: line.qty,
-                          onMinus: () => onQty(line.productId, line.qty - 1),
-                          onPlus: () => onQty(line.productId, line.qty + 1),
+                          unit: line.unit,
+                          onChanged: (value) => onQty(line.productId, value),
                         ),
                         const SizedBox(width: 8),
                         SizedBox(
@@ -613,7 +645,9 @@ class _CartPanel extends StatelessWidget {
               onTap: onDiscount,
               child: KeyValueRow(
                 label: 'Discount',
-                value: cart.discount > 0 ? '- ${money(cart.discount)}' : 'Add discount',
+                value: cart.discount > 0
+                    ? '- ${money(cart.discount)}'
+                    : 'Add discount',
                 valueColor: cart.discount > 0 ? AppColors.loss : AppColors.seed,
               ),
             ),
@@ -661,13 +695,73 @@ class _CartPanel extends StatelessWidget {
 class _QtyStepper extends StatelessWidget {
   const _QtyStepper({
     required this.value,
-    required this.onMinus,
-    required this.onPlus,
+    required this.unit,
+    required this.onChanged,
   });
 
   final double value;
-  final VoidCallback onMinus;
-  final VoidCallback onPlus;
+  final String unit;
+  final ValueChanged<double> onChanged;
+
+  double get _step {
+    final normalized = unit.trim().toLowerCase();
+    if ([
+      'g',
+      'gram',
+      'grams',
+      'ml',
+      'milliliter',
+      'millilitre',
+    ].contains(normalized))
+      return 50;
+    if ([
+      'kg',
+      'kilogram',
+      'kilograms',
+      'l',
+      'liter',
+      'litre',
+      'liters',
+      'litres',
+      'm',
+    ].contains(normalized))
+      return 0.05;
+    return 1;
+  }
+
+  Future<void> _edit(BuildContext context) async {
+    final controller = TextEditingController(text: qty(value));
+    final amount = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Quantity in $unit'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+          ],
+          decoration: InputDecoration(labelText: 'Amount ($unit)'),
+          onSubmitted: (_) =>
+              Navigator.pop(ctx, double.tryParse(controller.text.trim())),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(ctx, double.tryParse(controller.text.trim())),
+            child: const Text('Set quantity'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (amount != null && amount > 0) onChanged(amount);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -680,22 +774,30 @@ class _QtyStepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(
-            onTap: onMinus,
+            onTap: () => onChanged(
+              (value - _step).clamp(0.0, double.infinity).toDouble(),
+            ),
             child: const Padding(
               padding: EdgeInsets.all(5),
               child: Icon(Icons.remove_rounded, size: 16),
             ),
           ),
           SizedBox(
-            width: 26,
-            child: Text(
-              qty(value),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+            width: 42,
+            child: InkWell(
+              onTap: () => _edit(context),
+              child: Text(
+                qty(value),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
           InkWell(
-            onTap: onPlus,
+            onTap: () => onChanged(value + _step),
             child: const Padding(
               padding: EdgeInsets.all(5),
               child: Icon(Icons.add_rounded, size: 16),
@@ -737,7 +839,9 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   Widget build(BuildContext context) {
     final paidInput = double.tryParse(_paid.text.trim()) ?? 0;
     final paid = paidInput.clamp(0, widget.total).toDouble();
-    final change = (paidInput - widget.total).clamp(0, double.infinity).toDouble();
+    final change = (paidInput - widget.total)
+        .clamp(0, double.infinity)
+        .toDouble();
     final credit = widget.total - paid;
     final creditBlocked = credit > 0.009 && !widget.hasCustomer;
 
@@ -779,13 +883,18 @@ class _PaymentDialogState extends State<_PaymentDialog> {
             TextField(
               controller: _paid,
               autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              ],
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Amount received',
                 prefixText: 'Br ',
-                helperText: 'Enter the full amount for cash, or less for credit.',
+                helperText:
+                    'Enter the full amount for cash, or less for credit.',
               ),
             ),
             const SizedBox(height: 12),
@@ -881,7 +990,10 @@ class _ReceiptDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            KeyValueRow(label: 'Customer', value: result.customerName ?? 'Walk-in'),
+            KeyValueRow(
+              label: 'Customer',
+              value: result.customerName ?? 'Walk-in',
+            ),
             KeyValueRow(label: 'Paid', value: money(result.paid)),
             if (result.change > 0)
               KeyValueRow(

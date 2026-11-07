@@ -12,6 +12,8 @@ import { catalogRouter } from "./routes/catalog";
 import { publicRouter } from "./routes/public";
 import { exportImportRouter } from "./routes/exportImport";
 import { syncRouter } from "./routes/sync";
+import { supplierRouter } from "./routes/supplier";
+import { ordersRouter } from "./routes/orders";
 
 export const app = express();
 
@@ -38,6 +40,8 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api", publicRouter);
 app.use("/api/auth", authRouter);
+app.use("/api/supplier", supplierRouter);
+app.use("/api/orders", ordersRouter);
 app.use("/api", catalogRouter);
 app.use("/api", billingRouter);
 app.use("/api", syncRouter);

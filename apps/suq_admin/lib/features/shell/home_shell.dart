@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
-import '../catalog/catalog_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../payments/payments_screen.dart';
 import '../settings/settings_screen.dart';
 import '../shops/shops_screen.dart';
+import '../suppliers/suppliers_screen.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
@@ -20,20 +20,37 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['Dashboard', 'Payments', 'Shops', 'Catalog'];
+  static const _titles = ['Dashboard', 'Payments', 'Shops', 'Suppliers'];
 
   static const _destinations = [
-    (icon: Icons.space_dashboard_outlined, selected: Icons.space_dashboard_rounded, label: 'Dashboard'),
-    (icon: Icons.receipt_long_outlined, selected: Icons.receipt_long_rounded, label: 'Payments'),
-    (icon: Icons.storefront_outlined, selected: Icons.storefront_rounded, label: 'Shops'),
-    (icon: Icons.inventory_2_outlined, selected: Icons.inventory_2_rounded, label: 'Catalog'),
+    (
+      icon: Icons.space_dashboard_outlined,
+      selected: Icons.space_dashboard_rounded,
+      label: 'Dashboard',
+    ),
+    (
+      icon: Icons.receipt_long_outlined,
+      selected: Icons.receipt_long_rounded,
+      label: 'Payments',
+    ),
+    (
+      icon: Icons.storefront_outlined,
+      selected: Icons.storefront_rounded,
+      label: 'Shops',
+    ),
+    (
+      icon: Icons.local_shipping_outlined,
+      selected: Icons.local_shipping_rounded,
+      label: 'Suppliers',
+    ),
   ];
 
   Future<void> _logout() async {
     final confirmed = await confirmAction(
       context,
       title: 'Sign out?',
-      message: 'You will need your administrator phone number and PIN to sign in again.',
+      message:
+          'You will need your administrator phone number and PIN to sign in again.',
       confirmLabel: 'Sign out',
     );
     if (!confirmed) return;
@@ -49,7 +66,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       DashboardScreen(onOpenPayments: () => setState(() => _index = 1)),
       const PaymentsScreen(),
       const ShopsScreen(),
-      const CatalogScreen(),
+      const SuppliersScreen(),
     ];
 
     final body = IndexedStack(index: _index, children: pages);
@@ -70,7 +87,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               onSelected: (value) {
                 if (value == 'settings') {
                   Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SettingsScreen(),
+                    ),
                   );
                 } else if (value == 'logout') {
                   _logout();
@@ -145,7 +164,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               children: [
                 NavigationRail(
                   selectedIndex: _index,
-                  onDestinationSelected: (value) => setState(() => _index = value),
+                  onDestinationSelected: (value) =>
+                      setState(() => _index = value),
                   labelType: NavigationRailLabelType.all,
                   backgroundColor: Colors.white,
                   leading: const Padding(
@@ -184,7 +204,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 
   String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty);
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty);
     if (parts.isEmpty) return 'A';
     return parts.take(2).map((part) => part[0].toUpperCase()).join();
   }

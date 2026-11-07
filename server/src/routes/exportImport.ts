@@ -95,9 +95,9 @@ exportImportRouter.post(
     let created = 0;
     let updated = 0;
     for (const item of body.categories) {
-      const existing = await prisma.category.findUnique({ where: { slug: item.slug } });
+      const existing = await prisma.category.findFirst({ where: { slug: item.slug, supplierId: null } });
       if (existing) {
-        await prisma.category.update({ where: { slug: item.slug }, data: { name: item.name, sortOrder: item.sortOrder } });
+        await prisma.category.update({ where: { id: existing.id }, data: { name: item.name, sortOrder: item.sortOrder } });
         updated += 1;
       } else {
         await prisma.category.create({ data: { name: item.name, slug: item.slug, sortOrder: item.sortOrder } });
@@ -230,7 +230,7 @@ exportImportRouter.post(
     let updated = 0;
     let skipped = 0;
     for (const item of body.products) {
-      const category = await prisma.category.findUnique({ where: { slug: item.categorySlug } });
+      const category = await prisma.category.findFirst({ where: { slug: item.categorySlug, supplierId: null } });
       if (!category) {
         skipped += 1;
         continue;

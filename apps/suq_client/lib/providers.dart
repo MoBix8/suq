@@ -349,8 +349,38 @@ class EntitlementController extends AsyncNotifier<EntitlementState> {
 
 // ─── Data providers ──────────────────────────────────────────────────────────
 
-final productsProvider = FutureProvider<List<Product>>(
-  (ref) => ref.watch(productRepositoryProvider).list(),
+class ProductQuery {
+  const ProductQuery({
+    this.query = '',
+    this.lowStockOnly = false,
+    this.page = 1,
+    this.pageSize = 30,
+  });
+
+  final String query;
+  final bool lowStockOnly;
+  final int page;
+  final int pageSize;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProductQuery &&
+      other.query == query &&
+      other.lowStockOnly == lowStockOnly &&
+      other.page == page &&
+      other.pageSize == pageSize;
+
+  @override
+  int get hashCode => Object.hash(query, lowStockOnly, page, pageSize);
+}
+
+final productsProvider = FutureProvider.family<List<Product>, ProductQuery>(
+  (ref, q) => ref.watch(productRepositoryProvider).list(
+        query: q.query,
+        lowStockOnly: q.lowStockOnly,
+        page: q.page,
+        pageSize: q.pageSize,
+      ),
 );
 
 final customersProvider = FutureProvider<List<Customer>>(

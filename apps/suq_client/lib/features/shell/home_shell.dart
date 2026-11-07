@@ -8,6 +8,7 @@ import '../checkout/checkout_screen.dart';
 import '../customers/customers_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../products/products_screen.dart';
+import '../orders/orders_screen.dart';
 import '../reports/reports_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -22,12 +23,21 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
   bool _syncing = false;
 
-  static const _titles = ['Dashboard', 'New sale', 'Products', 'Customers', 'Reports'];
+  static const _titles = [
+    'Dashboard',
+    'New sale',
+    'Products',
+    'Orders',
+    'Customers',
+    'Reports',
+  ];
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncNow(showFeedback: false));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _syncNow(showFeedback: false),
+    );
   }
 
   Future<void> _syncNow({bool showFeedback = true}) async {
@@ -40,7 +50,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       if (showFeedback && mounted) {
         showAppSnack(
           context,
-          count == 0 ? 'Everything is up to date.' : 'Synced $count change${count == 1 ? '' : 's'}.',
+          count == 0
+              ? 'Everything is up to date.'
+              : 'Synced $count change${count == 1 ? '' : 's'}.',
         );
       }
     } catch (error) {
@@ -62,6 +74,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       DashboardScreen(onStartSale: () => setState(() => _index = 1)),
       const CheckoutScreen(),
       const ProductsScreen(),
+      const OrdersScreen(),
       const CustomersScreen(),
       const ReportsScreen(),
     ];
@@ -84,7 +97,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               child: Center(
                 child: StatusChip(
                   label: '${entitlement!.daysLeft}d left',
-                  color: entitlement.daysLeft <= 5 ? AppColors.warning : AppColors.profit,
+                  color: entitlement.daysLeft <= 5
+                      ? AppColors.warning
+                      : AppColors.profit,
                   icon: Icons.verified_rounded,
                 ),
               ),
@@ -106,11 +121,19 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           ),
           IconButton(
             tooltip: 'Settings',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
             icon: const Icon(Icons.settings_outlined),
           ),
+          if (!wide)
+            IconButton(
+              tooltip: 'Supplier orders',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const OrdersScreen()),
+              ),
+              icon: const Icon(Icons.local_shipping_outlined),
+            ),
           const SizedBox(width: 8),
         ],
       ),
@@ -119,7 +142,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               children: [
                 NavigationRail(
                   selectedIndex: _index,
-                  onDestinationSelected: (value) => setState(() => _index = value),
+                  onDestinationSelected: (value) =>
+                      setState(() => _index = value),
                   labelType: NavigationRailLabelType.all,
                   backgroundColor: Colors.white,
                   leading: const Padding(
@@ -143,6 +167,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       label: Text('Products'),
                     ),
                     NavigationRailDestination(
+                      icon: Icon(Icons.local_shipping_outlined),
+                      selectedIcon: Icon(Icons.local_shipping_rounded),
+                      label: Text('Orders'),
+                    ),
+                    NavigationRailDestination(
                       icon: Icon(Icons.people_outline_rounded),
                       selectedIcon: Icon(Icons.people_rounded),
                       label: Text('Customers'),
@@ -162,8 +191,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       bottomNavigationBar: wide
           ? null
           : NavigationBar(
-              selectedIndex: _index,
-              onDestinationSelected: (value) => setState(() => _index = value),
+              selectedIndex: _index > 3 ? _index - 1 : _index,
+              onDestinationSelected: (value) => setState(() => _index = value > 2 ? value + 1 : value),
               destinations: const [
                 NavigationDestination(
                   icon: Icon(Icons.space_dashboard_outlined),
