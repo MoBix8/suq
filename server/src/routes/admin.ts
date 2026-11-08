@@ -147,8 +147,61 @@ adminRouter.get(
   }),
 );
 
-// ─── Dashboard ───────────────────────────────────────────────────────────────
+adminRouter.patch(
+  "/suppliers/:id",
+  asyncHandler(async (req, res) => {
+    const body = z.object({
+      name: z.string().trim().min(2).max(80).optional(),
+      businessName: z.string().trim().min(2).max(120).optional(),
+      phone: phoneSchema.optional(),
+      pin: pinSchema.optional(),
+    }).parse(req.body);
 
+    const supplier = await prisma.supplier.findUnique({
+      where: { id: req.params.id },
+      include: { user: true },
+    });
+    if (!supplier) throw new AppError(404, "Supplier not found");
+
+    if (body.phone && body.phone !== supplier.user.phone) {
+      const dup = await prisma.user.findUnique({ where: { phone: body.phone } });
+      if (dup) throw new AppError(409, "An account with this phone already exists");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: supplier.userId },
+        data: {
+          ...(body.name ? { name: body.name } : {}),
+          ...(body.phone ? { phone: body.phone } : {}),
+          ...(body.pin ? { pinHash: await bcrypt.hash(body.pin, 10) } : {}),
+        },
+      });
+      if (body.businessName) {
+        await tx.supplier.update({
+          where: { id: supplier.id },
+          data: { businessName: body.businessName },
+        });
+      }
+    });
+
+    const updated = await prisma.supplier.findUnique({
+      where: { id: supplier.id },
+      include: { user: { select: { id: true, name: true, phone: true } } },
+    });
+    res.json({ supplier: updated });
+  }),
+);
+
+adminRouter.delete(
+  "/suppliers/:id",
+  asyncHandler(async (req, res) => {
+    const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
+    if (!supplier) throw new AppError(404, "Supplier not found");
+    await prisma.user.delete({ where: { id: supplier.userId } });
+    res.json({ ok: true });
+  }),
+);
 adminRouter.get(
   "/dashboard",
   asyncHandler(async (_req, res) => {

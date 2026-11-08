@@ -27,7 +27,110 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
 
   Future<void> _refresh() async => setState(() => _future = _load());
 
-  Future<void> _create() async {
+  Future<void> _edit(Map<String, dynamic> supplier) async {
+    final user = (supplier['user'] as Map?) ?? {};
+    final nameCtrl = TextEditingController(text: user['name']?.toString() ?? '');
+    final businessCtrl = TextEditingController(text: supplier['businessName']?.toString() ?? '');
+    final phoneCtrl = TextEditingController(text: user['phone']?.toString() ?? '');
+    final pinCtrl = TextEditingController();
+    String? error;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit supplier'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: businessCtrl,
+                  decoration: const InputDecoration(labelText: 'Business name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Account holder name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Phone number'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pinCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'New PIN (leave blank to keep)'),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(error!, style: const TextStyle(color: AdminColors.danger, fontSize: 12.5)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  final body = <String, dynamic>{};
+                  if (businessCtrl.text.trim().isNotEmpty) body['businessName'] = businessCtrl.text.trim();
+                  if (nameCtrl.text.trim().isNotEmpty) body['name'] = nameCtrl.text.trim();
+                  if (phoneCtrl.text.trim().isNotEmpty) body['phone'] = phoneCtrl.text.trim();
+                  if (pinCtrl.text.trim().isNotEmpty) body['pin'] = pinCtrl.text.trim();
+                  final api = ProviderScope.containerOf(dialogContext).read(apiProvider);
+                  await api.patch('/admin/suppliers/${supplier['id']}', body: body);
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
+                } on ApiException catch (e) {
+                  setDialogState(() => error = e.message);
+                } catch (e) {
+                  setDialogState(() => error = e.toString());
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    businessCtrl.dispose();
+    phoneCtrl.dispose();
+    pinCtrl.dispose();
+    if (result == true) {
+      await _refresh();
+      if (mounted) showAppSnack(context, 'Supplier updated.');
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> supplier) async {
+    final confirmed = await confirmAction(
+      context,
+      title: 'Delete ${supplier['businessName']}?',
+      message: 'This permanently removes the supplier account and their catalog.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    try {
+      final api = ProviderScope.containerOf(context).read(apiProvider);
+      await api.delete('/admin/suppliers/${supplier['id']}');
+      await _refresh();
+      if (mounted) showAppSnack(context, 'Supplier deleted.');
+    } on ApiException catch (error) {
+      if (mounted) showAppSnack(context, error.message, error: true);
+    } catch (error) {
+      if (mounted) showAppSnack(context, error.toString(), error: true);
+    }
+  }
     final draft = await showDialog<_SupplierDraft>(
       context: context,
       builder: (_) => const _CreateSupplierDialog(),
@@ -157,6 +260,21 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                                 ),
                                 subtitle: Text(
                                   '${suppliers[i]['user']?['name'] ?? ''} · ${suppliers[i]['user']?['phone'] ?? ''}',
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Edit',
+                                      onPressed: () => _edit(suppliers[i]),
+                                      icon: const Icon(Icons.edit_outlined, size: 19),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Delete',
+                                      onPressed: () => _delete(suppliers[i]),
+                                      icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AdminColors.danger),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
