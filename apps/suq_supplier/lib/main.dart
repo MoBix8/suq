@@ -73,12 +73,37 @@ class _SupplierAppState extends State<SupplierApp> {
     title: 'SUQ Supplier',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: purple),
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: purple,
+        brightness: Brightness.light,
+      ),
       scaffoldBackgroundColor: const Color(0xFFF8F6FB),
       useMaterial3: true,
+      cardTheme: const CardThemeData(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(16)),
+        ),
+        margin: EdgeInsets.symmetric(vertical: 6),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFFF8F6FB),
         foregroundColor: Color(0xFF21182D),
+        elevation: 0,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: purple,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+        ),
       ),
     ),
     home: _signedIn
