@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../catalog/catalog_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../payments/payments_screen.dart';
 import '../settings/settings_screen.dart';
@@ -20,7 +21,13 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['Dashboard', 'Payments', 'Shops', 'Suppliers'];
+  static const _titles = [
+    'Dashboard',
+    'Payments',
+    'Shops',
+    'Suppliers',
+    'Billing',
+  ];
 
   static const _destinations = [
     (
@@ -42,6 +49,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       icon: Icons.local_shipping_outlined,
       selected: Icons.local_shipping_rounded,
       label: 'Suppliers',
+    ),
+    (
+      icon: Icons.account_balance_wallet_outlined,
+      selected: Icons.account_balance_wallet_rounded,
+      label: 'Billing',
     ),
   ];
 
@@ -67,6 +79,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const PaymentsScreen(),
       const ShopsScreen(),
       const SuppliersScreen(),
+      const BillingSettingsScreen(),
     ];
 
     final body = IndexedStack(index: _index, children: pages);

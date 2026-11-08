@@ -15,6 +15,7 @@ class SuppliersScreen extends ConsumerStatefulWidget {
 
 class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
   late Future<List<Map<String, dynamic>>> _future = _load();
+  bool _creating = false;
 
   Future<List<Map<String, dynamic>>> _load() async {
     final response = await ref.read(apiProvider).get('/admin/suppliers');
@@ -32,6 +33,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
       builder: (_) => const _CreateSupplierDialog(),
     );
     if (draft == null) return;
+    setState(() => _creating = true);
     try {
       await ref
           .read(apiProvider)
@@ -51,6 +53,8 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     } catch (error) {
       if (mounted)
         showAppSnack(context, 'Could not create supplier: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _creating = false);
     }
   }
 
@@ -100,9 +104,18 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                           ),
                         ),
                         FilledButton.icon(
-                          onPressed: _create,
-                          icon: const Icon(Icons.person_add_alt_1),
-                          label: const Text('Create supplier'),
+                          onPressed: _creating ? null : _create,
+                          icon: _creating
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.person_add_alt_1),
+                          label: Text(_creating ? 'Creating…' : 'Create supplier'),
                         ),
                       ],
                     ),

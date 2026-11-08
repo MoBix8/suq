@@ -2,17 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 import 'banks_tab.dart';
-import 'categories_tab.dart';
 import 'packages_tab.dart';
-import 'products_tab.dart';
 
-class CatalogScreen extends StatelessWidget {
-  const CatalogScreen({super.key});
+class BillingSettingsScreen extends StatelessWidget {
+  const BillingSettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 2,
       child: Column(
         children: [
           const Padding(
@@ -21,7 +19,7 @@ class CatalogScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Catalog & billing settings',
+                  'Billing settings',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
@@ -31,7 +29,7 @@ class CatalogScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 3),
                 Text(
-                  'Packages, receiving accounts, and the shared product library that shops download.',
+                  'Manage shop subscription packages and receiving bank accounts.',
                   style: TextStyle(fontSize: 12.5, color: AdminColors.muted),
                 ),
               ],
@@ -43,20 +41,14 @@ class CatalogScreen extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 12),
             tabs: [
               Tab(icon: Icon(Icons.sell_outlined, size: 20), text: 'Packages'),
-              Tab(icon: Icon(Icons.account_balance_outlined, size: 20), text: 'Bank accounts'),
-              Tab(icon: Icon(Icons.category_outlined, size: 20), text: 'Categories'),
-              Tab(icon: Icon(Icons.inventory_2_outlined, size: 20), text: 'Products'),
+              Tab(
+                icon: Icon(Icons.account_balance_outlined, size: 20),
+                text: 'Bank accounts',
+              ),
             ],
           ),
           const Expanded(
-            child: TabBarView(
-              children: [
-                PackagesTab(),
-                BanksTab(),
-                CategoriesTab(),
-                ProductsTab(),
-              ],
-            ),
+            child: TabBarView(children: [PackagesTab(), BanksTab()]),
           ),
         ],
       ),
