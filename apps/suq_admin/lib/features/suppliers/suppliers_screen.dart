@@ -131,6 +131,8 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
       if (mounted) showAppSnack(context, error.toString(), error: true);
     }
   }
+
+  Future<void> _create() async {
     final draft = await showDialog<_SupplierDraft>(
       context: context,
       builder: (_) => const _CreateSupplierDialog(),

@@ -69,6 +69,81 @@ Auth + device-bound. Product library items. `q` searches name, SKU, and barcode.
 `updatedSince` enables incremental pulls. Returns
 `{ products, total, page, pageSize, hasMore }`.
 
+## Supplier marketplace
+
+Supplier endpoints require a `SUPPLIER` token.
+
+### `GET /supplier/categories`, `POST /supplier/categories`, `PATCH|DELETE /supplier/categories/:id`
+
+`GET` mirrors the client's SUQ library: it returns every category with active
+products plus the supplier's own categories (including empty ones). Each row
+includes `supplierId`, so the app can tell which categories the supplier owns.
+Only the supplier's own categories can be renamed or deleted.
+
+### `GET /supplier/products`, `POST /supplier/products`, `PATCH|DELETE /supplier/products/:id`
+
+`GET` returns the same feed shops browse in the client's SUQ library — every
+active product from SUQ and all suppliers — plus the supplier's own rows. Only
+products created by the supplier can be edited or deleted. These products form
+the library shops copy into their own catalog; they are not wholesale listings.
+
+### `GET /supplier/listings`, `POST /supplier/listings`, `PATCH /supplier/listings/:id`
+
+Wholesale listings are standalone offers and are not linked to catalog products.
+
+```json
+{
+  "name": "Teff flour — 25 kg sack",
+  "description": "Grade 1, Addis Ababa",
+  "category": "Grains",
+  "saleUnit": "sack",
+  "piecesPerUnit": 1,
+  "pricePerUnit": 3200,
+  "minOrderQty": 2,
+  "weightPerUnitKg": 25,
+  "lengthCm": 60,
+  "widthCm": 40,
+  "heightCm": 15,
+  "active": true
+}
+```
+
+`saleUnit` is one of `piece`, `dozen`, `pack`, `sack`, `crate`, `bulk`.
+`piecesPerUnit` states how many individual pieces one sale unit contains — for
+example a pack of 6 or 12, or a sack holding 24 tins. It defaults to `1`, and a
+`dozen` should use `12`. `weightPerUnitKg` is always kilograms even when the
+supplier enters grams in the app. The server computes
+`volumePerUnitM3 = lengthCm × widthCm × heightCm / 1,000,000`. `PATCH` accepts
+any subset of the fields above.
+
+Every listing records the publishing account in `publishedById` and returns the
+account as `publishedBy` (`{ id, name, phone }`). The field is set from the
+authenticated supplier token and cannot be chosen by the client.
+
+### Shop ordering
+
+`GET /orders/suppliers` returns suppliers with active listings. `POST /orders`
+accepts `{ supplierId, items: [{ listingId, quantity }], latitude?, longitude?, note? }`;
+each quantity must meet the listing's `minOrderQty`.
+
+Delivery is suggested from the supplier's rates:
+
+```text
+base fee
++ distanceKm × deliveryPerKm
++ shippingWeightKg × deliveryPerKg
++ shippingVolumeM3 × deliveryPerCubicMeter
+```
+
+Fees and totals are rounded to 2 decimals. The supplier can override the quote
+with `PATCH /supplier/orders/:id/delivery` before accepting the order.
+
+`PATCH /supplier/orders/:id/status` moves an order through
+`PENDING → ACCEPTED/REJECTED`, `ACCEPTED → READY`, and `READY → DELIVERED`.
+Accepting stores `acceptedById` from the supplier token and `acceptedAt`.
+Order responses include `acceptedBy` (`{ id, name, phone }`) and `acceptedAt` so
+shops and suppliers can see who accepted the order.
+
 ## Subscription
 
 ### `GET /subscription/me`

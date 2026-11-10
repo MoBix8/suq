@@ -18,9 +18,9 @@ catalogRouter.get(
   asyncHandler(async (req, res) => {
     const paging = pageParams(req.query as Record<string, unknown>, 100, 200);
     const [total, categories] = await Promise.all([
-      prisma.category.count({ where: { products: { some: { active: true, listings: { some: { active: true } } } } } }),
+      prisma.category.count({ where: { products: { some: { active: true } } } }),
       prisma.category.findMany({
-        where: { products: { some: { active: true, listings: { some: { active: true } } } } },
+        where: { products: { some: { active: true } } },
         skip: paging.skip,
         take: paging.take,
         orderBy: { sortOrder: "asc" },
@@ -28,7 +28,7 @@ catalogRouter.get(
           _count: {
             select: {
               products: {
-                where: { active: true, listings: { some: { active: true } } },
+                where: { active: true },
               },
             },
           },
@@ -61,7 +61,6 @@ catalogRouter.get(
     const paging = pageParams(req.query as Record<string, unknown>, 50, 500);
     const where: Prisma.ProductLibraryItemWhereInput = {
       active: true,
-      listings: { some: { active: true } },
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.updatedSince ? { updatedAt: { gt: new Date(query.updatedSince) } } : {}),
       ...(query.q

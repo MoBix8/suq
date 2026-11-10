@@ -11,15 +11,17 @@ datasource db {
 // ─── Identity ────────────────────────────────────────────────────────────────
 
 model User {
-  id        String    @id @default(cuid())
-  phone     String    @unique
-  pinHash   String
-  name      String
-  role      String    @default("OWNER") // OWNER | ADMIN | SUPPLIER
-  shop      Shop?
-  supplier  Supplier?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                String            @id @default(cuid())
+  phone             String            @unique
+  pinHash           String
+  name              String
+  role              String            @default("OWNER") // OWNER | ADMIN | SUPPLIER
+  shop              Shop?
+  supplier          Supplier?
+  publishedListings SupplierListing[]
+  acceptedOrders    ShopOrder[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
 model Shop {
@@ -191,29 +193,42 @@ model ProductLibraryItem {
   updatedAt           DateTime  @updatedAt
 
   shopProducts ShopProduct[]
-  listings     SupplierListing[]
 
   @@index([categoryId])
   @@index([updatedAt])
 }
 
+// A wholesale offer owned by a supplier. Listings are intentionally
+// independent from the retail product library: shops order listings directly,
+// while catalog products are copied into shop libraries for retail selling.
 model SupplierListing {
-  id           String             @id @default(cuid())
-  supplierId   String
-  supplier     Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  productId    String
-  product      ProductLibraryItem @relation(fields: [productId], references: [id], onDelete: Cascade)
-  packName     String
-  unitsPerPack Float
-  weightKg     Float              @default(0)
-  volumeCubicM Float              @default(0)
-  bulkPrice    Float
-  active       Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id              String   @id @default(cuid())
+  supplierId      String
+  supplier        Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  // The exact account that published this listing. Nullable so listings that
+  // predate this field can still be read; the migration backfills them.
+  publishedById   String?
+  publishedBy     User?    @relation(fields: [publishedById], references: [id], onDelete: SetNull)
+  name            String
+  description     String?
+  category        String?
+  saleUnit        String   @default("piece") // piece | dozen | pack | sack | crate | bulk
+  piecesPerUnit   Int      @default(1) // pieces inside one sale unit (e.g. 12 in a pack)
+  pricePerUnit    Float
+  minOrderQty     Int      @default(1)
+  weightPerUnitKg Float    @default(0)
+  lengthCm        Float    @default(0)
+  widthCm         Float    @default(0)
+  heightCm        Float    @default(0)
+  volumePerUnitM3 Float    @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([supplierId, productId])
+  orderItems ShopOrderItem[]
+
   @@index([supplierId, active])
+  @@index([publishedById])
 }
 
 model ShopOrder {
@@ -231,29 +246,38 @@ model ShopOrder {
   shippingWeightKg   Float
   shippingVolumeM3   Float
   note               String?
+  // Set when the supplier accepts the order, so both sides know who did it.
+  acceptedById       String?
+  acceptedBy         User?           @relation(fields: [acceptedById], references: [id], onDelete: SetNull)
+  acceptedAt         DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   items              ShopOrderItem[]
 
   @@index([shopId, createdAt])
   @@index([supplierId, status, createdAt])
+  @@index([acceptedById])
 }
 
 model ShopOrderItem {
-  id           String    @id @default(cuid())
+  id           String          @id @default(cuid())
   orderId      String
-  order        ShopOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId    String?
-  productName  String
-  sku          String
-  retailUnit   String
-  packName     String
-  unitsPerPack Float
-  packageCount Int
+  order        ShopOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  listingId    String?
+  listing      SupplierListing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listingName  String
+  category     String?
+  saleUnit     String
+  quantity     Int
   unitPrice    Float
   lineTotal    Float
   weightKg     Float
   volumeCubicM Float
+  lengthCm     Float           @default(0)
+  widthCm      Float           @default(0)
+  heightCm     Float           @default(0)
+
+  @@index([orderId])
 }
 
 // ─── Shop data (mirrored from devices) ───────────────────────────────────────

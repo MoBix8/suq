@@ -15,7 +15,8 @@ class OrdersScreen extends ConsumerStatefulWidget {
   ConsumerState<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends ConsumerState<OrdersScreen> {
+class _OrdersScreenState extends ConsumerState<OrdersScreen>
+    with WidgetsBindingObserver {
   List<Map<String, dynamic>> _suppliers = [];
   List<Map<String, dynamic>> _orders = [];
   String? _supplierId;
@@ -29,7 +30,19 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _load() async {
@@ -81,11 +94,16 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           .map((e) => Map<String, dynamic>.from(e as Map))
           .where((e) => e['active'] == true)
           .toList();
-  double get _subtotal => _listings.fold(
+  double get _subtotal => _listings.fold<double>(
     0,
     (sum, item) =>
-        sum + (item['bulkPrice'] as num? ?? 0) * (_cart[item['id']] ?? 0),
+        sum +
+        ((item['pricePerUnit'] as num?)?.toDouble() ?? 0) *
+            (_cart[item['id']] ?? 0),
   );
+
+  int _minOrder(Map<String, dynamic> listing) =>
+      ((listing['minOrderQty'] as num?)?.toInt() ?? 1).clamp(1, 10000).toInt();
 
   Future<void> _useLocation() async {
     try {
@@ -136,7 +154,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                 'longitude': _longitude,
               'items': _cart.entries
                   .where((e) => e.value > 0)
-                  .map((e) => {'listingId': e.key, 'packageCount': e.value})
+                  .map((e) => {'listingId': e.key, 'quantity': e.value})
                   .toList(),
             },
           );
@@ -178,30 +196,47 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
         children: [
           if (_suppliers.isEmpty)
-            const EmptyState(
+            EmptyState(
               icon: Icons.local_shipping_outlined,
               title: 'No supplier listings yet',
               message:
-                  'Suppliers will appear here when they publish products for shops.',
+                  'Suppliers will appear here when they publish wholesale listings. Tap refresh after they publish.',
+              action: OutlinedButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Refresh'),
+              ),
             )
           else ...[
-            DropdownButtonFormField<String>(
-              value: _supplierId,
-              decoration: const InputDecoration(
-                labelText: 'Choose supplier',
-                prefixIcon: Icon(Icons.storefront_outlined),
-              ),
-              items: [
-                for (final supplier in _suppliers)
-                  DropdownMenuItem(
-                    value: supplier['id'] as String?,
-                    child: Text('${supplier['businessName']}'),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _supplierId,
+                    decoration: const InputDecoration(
+                      labelText: 'Choose supplier',
+                      prefixIcon: Icon(Icons.storefront_outlined),
+                    ),
+                    items: [
+                      for (final supplier in _suppliers)
+                        DropdownMenuItem(
+                          value: supplier['id'] as String?,
+                          child: Text('${supplier['businessName']}'),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() {
+                      _supplierId = value;
+                      _cart.clear();
+                    }),
                   ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Refresh supplier listings',
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
               ],
-              onChanged: (value) => setState(() {
-                _supplierId = value;
-                _cart.clear();
-              }),
             ),
             const SizedBox(height: 10),
             for (final listing in _listings) _listingCard(listing),
@@ -267,9 +302,27 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   }
 
   Widget _listingCard(Map<String, dynamic> listing) {
-    final product = Map<String, dynamic>.from(listing['product'] as Map);
     final id = listing['id'].toString();
+    final name = listing['name']?.toString() ?? 'Listing';
+    final saleUnit = listing['saleUnit']?.toString() ?? 'piece';
+    final category = listing['category']?.toString() ?? '';
+    final price = (listing['pricePerUnit'] as num?)?.toDouble() ?? 0;
+    final pieces = (listing['piecesPerUnit'] as num?)?.toInt() ?? 1;
+    final pack = pieces > 1 ? ' · $pieces pcs / $saleUnit' : '';
+    final weight = (listing['weightPerUnitKg'] as num?)?.toDouble() ?? 0;
+    final volume = (listing['volumePerUnitM3'] as num?)?.toDouble() ?? 0;
+    final length = (listing['lengthCm'] as num?)?.toDouble() ?? 0;
+    final width = (listing['widthCm'] as num?)?.toDouble() ?? 0;
+    final height = (listing['heightCm'] as num?)?.toDouble() ?? 0;
+    final minOrder = _minOrder(listing);
     final count = _cart[id] ?? 0;
+    final dimensions = length > 0 && width > 0 && height > 0
+        ? ' · ${length.toStringAsFixed(0)}×${width.toStringAsFixed(0)}×${height.toStringAsFixed(0)} cm'
+        : '';
+    final publisher = listing['publishedBy'] is Map
+        ? (listing['publishedBy'] as Map)['name']?.toString() ?? ''
+        : '';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -277,7 +330,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           children: [
             const CircleAvatar(
               backgroundColor: Color(0xFFE5F2EE),
-              child: Icon(Icons.inventory_2_outlined, color: AppColors.seed),
+              child: Icon(Icons.sell_outlined, color: AppColors.seed),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -285,16 +338,31 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${product['name']} · ${listing['packName']}',
+                    name,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   Text(
-                    '${listing['unitsPerPack']} ${product['unit']} per pack · ${listing['weightKg']} kg · Br ${listing['bulkPrice']}',
+                    '${category.isEmpty ? '' : '$category · '}${money(price)} / $saleUnit$pack · min $minOrder',
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.muted,
                     ),
                   ),
+                  Text(
+                    '${weight.toStringAsFixed(weight == weight.roundToDouble() ? 0 : 2)} kg · ${volume.toStringAsFixed(4)} m³$dimensions',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                  if (publisher.isNotEmpty)
+                    Text(
+                      'Published by $publisher',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.muted,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -302,7 +370,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
               onPressed: count == 0
                   ? null
                   : () => setState(() {
-                      if (count == 1) {
+                      if (count <= minOrder) {
                         _cart.remove(id);
                       } else {
                         _cart[id] = count - 1;
@@ -312,7 +380,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
             ),
             Text('$count', style: const TextStyle(fontWeight: FontWeight.w800)),
             IconButton(
-              onPressed: () => setState(() => _cart[id] = count + 1),
+              onPressed: () => setState(() {
+                _cart[id] = count == 0 ? minOrder : count + 1;
+              }),
               icon: const Icon(Icons.add_circle_outline, color: AppColors.seed),
             ),
           ],
@@ -325,6 +395,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     final supplier = Map<String, dynamic>.from(
       order['supplier'] as Map? ?? const {},
     );
+    final acceptedBy = order['acceptedBy'] is Map
+        ? (order['acceptedBy'] as Map)['name']?.toString() ?? ''
+        : '';
     final items = order['items'] as List? ?? [];
     return Card(
       child: ExpansionTile(
@@ -337,11 +410,21 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
             ListTile(
               dense: true,
               title: Text(
-                '${raw['packageCount']} × ${raw['packName']} ${raw['productName']}',
+                '${raw['quantity']} × ${raw['listingName']}',
               ),
               subtitle: Text(
-                '${raw['unitsPerPack']} ${raw['retailUnit']} each',
+                '${money((raw['unitPrice'] as num?) ?? 0)} per ${raw['saleUnit'] ?? 'unit'}',
               ),
+            ),
+          if (acceptedBy.isNotEmpty)
+            ListTile(
+              dense: true,
+              leading: const Icon(
+                Icons.verified_outlined,
+                size: 18,
+                color: AppColors.seed,
+              ),
+              title: Text('Accepted by $acceptedBy'),
             ),
           if (order['deliveryQuoted'] != true)
             const Padding(

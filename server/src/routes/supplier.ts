@@ -43,9 +43,14 @@ supplierRouter.patch("/profile", asyncHandler(async (req, res) => {
 
 supplierRouter.get("/categories", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
+  // Mirror the client's SUQ library: every category that has active products,
+  // plus the supplier's own (possibly empty) categories so they can add to them.
   const categories = await prisma.category.findMany({
-    where: { supplierId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: { _count: { select: { products: true } } },
+    where: {
+      OR: [{ products: { some: { active: true } } }, { supplierId }],
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    include: { _count: { select: { products: { where: { active: true } } } } },
   });
   res.json({ categories });
 }));
@@ -92,8 +97,12 @@ const productInput = z.object({
 
 supplierRouter.get("/products", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
+  // Same feed shops see in the client's SUQ library: every active product from
+  // the shared library (SUQ and all suppliers), plus the supplier's own rows so
+  // they can still manage anything they created.
   const products = await prisma.productLibraryItem.findMany({
-    where: { OR: [{ supplierId }, { supplierId: null }] }, include: { category: true, listings: { where: { supplierId } } },
+    where: { OR: [{ active: true }, { supplierId }] },
+    include: { category: true },
     orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
   });
   res.json({ products });
@@ -122,54 +131,90 @@ supplierRouter.patch("/products/:id", asyncHandler(async (req, res) => {
 }));
 
 const listingInput = z.object({
-  productId: z.string().min(1),
-  packName: z.string().trim().min(1).max(60),
-  unitsPerPack: z.number().positive(),
-  weightKg: z.number().min(0),
-  volumeCubicM: z.number().min(0),
-  bulkPrice: z.number().min(0),
-  active: z.boolean().default(true),
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).nullish(),
+  category: z.string().trim().max(80).nullish(),
+  saleUnit: z.enum(["piece", "dozen", "pack", "sack", "crate", "bulk"]),
+  piecesPerUnit: z.number().int().min(1).max(100000).optional(),
+  pricePerUnit: z.number().positive(),
+  minOrderQty: z.number().int().min(1).max(10000),
+  weightPerUnitKg: z.number().positive(),
+  lengthCm: z.number().positive(),
+  widthCm: z.number().positive(),
+  heightCm: z.number().positive(),
+  active: z.boolean(),
 });
+
+function volumePerUnit(lengthCm: number, widthCm: number, heightCm: number): number {
+  return (lengthCm * widthCm * heightCm) / 1_000_000;
+}
 
 supplierRouter.get("/listings", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
   const listings = await prisma.supplierListing.findMany({
-    where: { supplierId }, include: { product: { include: { category: true } } },
+    where: { supplierId },
+    include: { publishedBy: { select: { id: true, name: true, phone: true } } },
     orderBy: { createdAt: "desc" },
   });
   res.json({ listings });
 }));
 
 supplierRouter.post("/listings", asyncHandler(async (req, res) => {
-  const { supplierId } = requireSupplier(req);
+  const { supplierId, userId } = requireSupplier(req);
   const body = listingInput.parse(req.body);
-  const product = await prisma.productLibraryItem.findFirst({
-    where: { id: body.productId, active: true, OR: [{ supplierId }, { supplierId: null }] },
+  const listing = await prisma.supplierListing.create({
+    data: {
+      ...body,
+      supplierId,
+      publishedById: userId,
+      piecesPerUnit: body.piecesPerUnit ?? 1,
+      description: body.description || null,
+      category: body.category || null,
+      volumePerUnitM3: volumePerUnit(body.lengthCm, body.widthCm, body.heightCm),
+    },
+    include: { publishedBy: { select: { id: true, name: true, phone: true } } },
   });
-  if (!product) return res.status(400).json({ error: "Select one of your active products" });
-  const listing = await prisma.supplierListing.create({ data: { ...body, supplierId } });
   res.status(201).json({ listing });
 }));
 
 supplierRouter.patch("/listings/:id", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
-  const body = listingInput.partial().omit({ productId: true }).parse(req.body);
-  const result = await prisma.supplierListing.updateMany({ where: { id: req.params.id, supplierId }, data: body });
-  if (!result.count) return res.status(404).json({ error: "Listing not found" });
-  res.json({ ok: true });
+  const body = listingInput.partial().parse(req.body);
+  const existing = await prisma.supplierListing.findFirst({ where: { id: req.params.id, supplierId } });
+  if (!existing) return res.status(404).json({ error: "Listing not found" });
+
+  const lengthCm = body.lengthCm ?? existing.lengthCm;
+  const widthCm = body.widthCm ?? existing.widthCm;
+  const heightCm = body.heightCm ?? existing.heightCm;
+  const listing = await prisma.supplierListing.update({
+    where: { id: existing.id },
+    data: {
+      ...body,
+      description: body.description === undefined ? undefined : body.description || null,
+      category: body.category === undefined ? undefined : body.category || null,
+      volumePerUnitM3: volumePerUnit(lengthCm, widthCm, heightCm),
+    },
+    include: { publishedBy: { select: { id: true, name: true, phone: true } } },
+  });
+  res.json({ listing });
 }));
 
 supplierRouter.get("/orders", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
   const orders = await prisma.shopOrder.findMany({
-    where: { supplierId }, include: { shop: { select: { id: true, name: true, city: true, subcity: true, phone: true, latitude: true, longitude: true } }, items: true },
+    where: { supplierId },
+    include: {
+      shop: { select: { id: true, name: true, city: true, subcity: true, phone: true, latitude: true, longitude: true } },
+      acceptedBy: { select: { id: true, name: true, phone: true } },
+      items: true,
+    },
     orderBy: { createdAt: "desc" },
   });
   res.json({ orders });
 }));
 
 supplierRouter.patch("/orders/:id/status", asyncHandler(async (req, res) => {
-  const { supplierId } = requireSupplier(req);
+  const { supplierId, userId } = requireSupplier(req);
   const { status } = z.object({ status: z.enum(["ACCEPTED", "REJECTED", "READY", "DELIVERED"]) }).parse(req.body);
   const existing = await prisma.shopOrder.findFirst({ where: { id: req.params.id, supplierId } });
   if (!existing) return res.status(404).json({ error: "Order not found" });
@@ -178,7 +223,14 @@ supplierRouter.patch("/orders/:id/status", asyncHandler(async (req, res) => {
     PENDING: ["ACCEPTED", "REJECTED"], ACCEPTED: ["READY"], READY: ["DELIVERED"],
   };
   if (!allowed[existing.status]?.includes(status)) return res.status(409).json({ error: "That order status change is not allowed" });
-  const order = await prisma.shopOrder.update({ where: { id: existing.id }, data: { status } });
+  const order = await prisma.shopOrder.update({
+    where: { id: existing.id },
+    data: {
+      status,
+      ...(status === "ACCEPTED" ? { acceptedById: userId, acceptedAt: new Date() } : {}),
+    },
+    include: { acceptedBy: { select: { id: true, name: true, phone: true } } },
+  });
   res.json({ order });
 }));
 

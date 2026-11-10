@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.suq" "\0"
-            VALUE "FileDescription", "suq_supplier" "\0"
+            VALUE "FileDescription", "SUQ SUPPLIER" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "suq_supplier" "\0"
+            VALUE "InternalName", "SUQ SUPPLIER" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.suq. All rights reserved." "\0"
             VALUE "OriginalFilename", "suq_supplier.exe" "\0"
-            VALUE "ProductName", "suq_supplier" "\0"
+            VALUE "ProductName", "SUQ SUPPLIER" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
