@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme.dart';
 import 'features/activation/activation_screen.dart';
 import 'features/auth/auth_screen.dart';
+import 'features/islamic/player/quran_mini_player.dart';
 import 'features/shell/home_shell.dart';
 import 'providers.dart';
 
@@ -31,6 +32,24 @@ class SuqApp extends ConsumerWidget {
       title: 'SUQ',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
+      navigatorKey: quranRootNavigatorKey,
+      builder: (context, child) {
+        final sessionActive = session.isLoggedIn;
+        final subscriptionActive = entitlement.asData?.value.active == true;
+        final showPlayer = sessionActive && subscriptionActive;
+        final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+        return Stack(
+          children: [
+            Positioned.fill(child: child ?? const SizedBox.shrink()),
+            if (showPlayer)
+              Positioned(
+                right: 16,
+                bottom: 88 + safeBottom,
+                child: const QuranMiniPlayer(),
+              ),
+          ],
+        );
+      },
       home: home,
     );
   }

@@ -38,9 +38,16 @@ gives the server regular contact.
 - On every successful API response the client stores `serverTime` and the local
   wall-clock time.
 - Later, `trustedNow = serverTime + (localNow - anchorLocalTime)`.
-- A backwards jump > 60 seconds sets `clockTampered = true` and forces an online
-  check; the app will not extend the lease using the local clock.
-- A forward jump only shortens access.
+- The client also persists a high-water mark that never moves backwards, and
+  adds an in-process monotonic stopwatch. A backwards jump > 60 seconds sets
+  `clockTampered = true` and forces an online check; the app will not extend the
+  lease using the local clock.
+- The signed token's `issuedAt` is a floor: even if local storage is wiped,
+  `trustedNow` is never earlier than the moment the server issued the lease.
+- Offline evaluations never report more days than the last online check, or
+  more than the token reported at issuance.
+- A forward jump only shortens access; an online check resets the anchor and
+  high-water mark to server time.
 
 ### 4. Rollback handling
 
@@ -78,9 +85,11 @@ server issues a fresh lease if the subscription is still valid.
 ## What this does not stop
 
 - A rooted device with a patched APK.
-- A user who keeps the phone clock frozen and never restarts the app for longer
-  than the lease. (The lease still expires by wall clock; freezing is an edge
-  case. Play Integrity closes it.)
+- A user who keeps the phone clock frozen and restarts the app. Within a session
+  the monotonic stopwatch still advances the lease; across restarts a frozen
+  clock cannot move the high-water mark backwards, but only a trusted time
+  source (or the next online check) can force it forward. Play Integrity closes
+  this.
 - A user who copies the app's local `device.id` value to another phone. Device
   binding blocks normal multi-device use, but it is not hardware attestation.
   Play Integrity / App Attest is the stronger fix.

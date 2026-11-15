@@ -244,7 +244,7 @@ class _HeroCard extends StatelessWidget {
                             : Icons.location_off_outlined,
                         label: supplier.hasLocation
                             ? 'Location ready'
-                            : 'Location not set',
+                            : 'Merkato default',
                       ),
                     ],
                   ),
@@ -558,6 +558,11 @@ class _SidePanel extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               KeyValueRow(
+                label: 'Warehouse',
+                value: supplier.warehouseName,
+                bold: true,
+              ),
+              KeyValueRow(
                 label: 'Base fee',
                 value: money(supplier.deliveryBaseFee),
               ),
@@ -574,20 +579,19 @@ class _SidePanel extends StatelessWidget {
                 value: money(supplier.deliveryPerCubicMeter),
               ),
               KeyValueRow(
-                label: 'Pickup location',
-                value: supplier.hasLocation ? 'Set' : 'Not set',
+                label: 'Pickup pin',
+                value: supplier.hasLocation ? 'Set' : 'Merkato default',
                 valueColor: supplier.hasLocation
                     ? SupplierColors.success
-                    : SupplierColors.warning,
+                    : SupplierColors.muted,
                 bold: true,
               ),
               const SizedBox(height: 10),
               if (!supplier.hasLocation)
                 const InfoBanner(
                   icon: Icons.location_on_outlined,
-                  color: SupplierColors.warning,
                   message:
-                      'Add your latitude and longitude so shops get automatic distance-based delivery quotes.',
+                      'No custom pin is set, so transport is measured from Merkato. Pick your warehouse on the map to use your own point.',
                 ),
             ],
           ),

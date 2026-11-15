@@ -30,6 +30,7 @@ supplierRouter.patch("/profile", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
   const body = z.object({
     businessName: z.string().trim().min(2).max(120).optional(),
+    warehouseName: z.string().trim().min(1).max(80).optional(),
     latitude: z.number().min(-90).max(90).nullable().optional(),
     longitude: z.number().min(-180).max(180).nullable().optional(),
     deliveryBaseFee: z.number().min(0).optional(),

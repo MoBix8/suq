@@ -107,6 +107,15 @@ class _OrderDetailDialogState extends ConsumerState<OrderDetailDialog> {
     final order = widget.order;
     final color = orderStatusColor(_status);
     final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
+    final breakdownTotal = order.deliveryBaseFee +
+        order.deliveryDistanceFee +
+        order.deliveryWeightFee +
+        order.deliveryVolumeFee;
+    // Hide the stored breakdown once the supplier overrides the fee, so the
+    // rows never contradict the amount being charged.
+    final showBreakdown = order.deliveryQuoted &&
+        breakdownTotal > 0 &&
+        (breakdownTotal - _deliveryFee).abs() < 0.01;
 
     return Dialog(
       insetPadding: const EdgeInsets.all(18),
@@ -262,6 +271,30 @@ class _OrderDetailDialogState extends ConsumerState<OrderDetailDialog> {
                             label: 'Delivery',
                             value: money(_deliveryFee),
                           ),
+                          if (showBreakdown) ...[
+                            if ((order.warehouseName ?? '').isNotEmpty)
+                              KeyValueRow(
+                                label: 'From warehouse',
+                                value: order.warehouseName!,
+                              ),
+                            KeyValueRow(
+                              label: 'Base fee',
+                              value: money(order.deliveryBaseFee),
+                            ),
+                            KeyValueRow(
+                              label: 'Distance'
+                                  '${order.deliveryDistanceKm != null ? ' · ${order.deliveryDistanceKm!.toStringAsFixed(1)} km' : ''}',
+                              value: money(order.deliveryDistanceFee),
+                            ),
+                            KeyValueRow(
+                              label: 'Weight',
+                              value: money(order.deliveryWeightFee),
+                            ),
+                            KeyValueRow(
+                              label: 'Volume',
+                              value: money(order.deliveryVolumeFee),
+                            ),
+                          ],
                           const Divider(height: 14),
                           KeyValueRow(
                             label: 'Total',

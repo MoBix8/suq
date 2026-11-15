@@ -88,19 +88,27 @@ exact UTF-8 payload bytes. Token format: `base64url(payload) + "." + base64url(s
 ### Client side
 
 1. Verify the Ed25519 signature with the embedded public key.
-2. Verify `shopId` matches the logged-in shop.
+2. Verify `shopId` and `deviceId` match the logged-in shop and this device.
 3. Evaluate dates with `TrustedClock`, not `DateTime.now()`.
-4. Unlock only if `trustedNow ∈ [startsAt, leaseUntil)`.
+4. Unlock only if `trustedNow ∈ [startsAt, leaseUntil)` and `trustedNow < endsAt`.
 5. If `leaseUntil` has passed, show “Connect to the internet to verify your
    subscription” and keep the app locked (data is never deleted).
 6. If the clock rolled backwards, force an online refresh.
+7. Never trust the local clock below the token's signed `issuedAt`, and never
+   report more days than the last online check (or the days at issuance).
 
-`TrustedClock` stores the last server timestamp and the local timestamp at the
-moment it was received:
+`TrustedClock` stores the last server timestamp, the local timestamp at the
+moment it was received, and a persisted high-water mark:
 
 ```
-trustedNow = lastServerTime + (localNow - localTimeAtAnchor)
+anchor     = lastServerTime + (localNow - localTimeAtAnchor)
+trustedNow = max(anchor, highWater, sessionMonotonic)
 ```
+
+The high-water mark only moves forward, so moving the device date backwards can
+never increase the remaining days. While the app is running, a monotonic
+`Stopwatch` also advances `trustedNow` even if the wall clock is frozen. A
+successful online check resets the anchor and high-water mark to server time.
 
 If `localNow < localTimeAtAnchor - 60s`, the clock was moved backwards. The app
 flags tampering and refuses to extend the lease offline.
@@ -110,8 +118,10 @@ flags tampering and refuses to extend the lease offline.
 A determined attacker with a rooted phone can patch the app. No offline client
 can be made 100% tamper-proof. The lease model makes casual date changes
 useless, bounds offline abuse to 7 days per check, and gives the server a full
-audit trail (`Device.lastSeenAt`, `lastServerTime`). For higher assurance, add
-Play Integrity / App Attest in v2.
+audit trail (`Device.lastSeenAt`, `lastServerTime`). A user who freezes the wall
+clock and keeps restarting the app can still stretch the offline window, because
+only a trusted time source can force it forward. For higher assurance, add Play
+Integrity / App Attest in v2.
 
 ## Data model
 

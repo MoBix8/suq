@@ -11,6 +11,7 @@ class AppColors {
   static const loss = Color(0xFFB3261E);
   static const warning = Color(0xFFB26A00);
   static const accent = Color(0xFFF2B233);
+  static const supplier = Color(0xFF54258A);
 }
 
 class AppTheme {

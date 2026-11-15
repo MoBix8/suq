@@ -7,9 +7,9 @@ import '../../widgets/common.dart';
 import '../checkout/checkout_screen.dart';
 import '../customers/customers_screen.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../islamic/islamic_tools_screen.dart';
 import '../products/products_screen.dart';
 import '../orders/orders_screen.dart';
-import '../reports/reports_screen.dart';
 import '../settings/settings_screen.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
@@ -19,7 +19,8 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell>
+    with WidgetsBindingObserver {
   int _index = 0;
   bool _syncing = false;
 
@@ -27,17 +28,31 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     'Dashboard',
     'New sale',
     'Products',
-    'Orders',
+    'Listings',
     'Customers',
-    'Reports',
   ];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _syncNow(showFeedback: false),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Renew the signed lease and re-check it when the app comes back.
+      ref.read(entitlementProvider.notifier).refresh(silent: true);
+    }
   }
 
   Future<void> _syncNow({bool showFeedback = true}) async {
@@ -76,7 +91,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const ProductsScreen(),
       const OrdersScreen(),
       const CustomersScreen(),
-      const ReportsScreen(),
     ];
 
     final body = IndexedStack(index: _index, children: pages);
@@ -87,10 +101,24 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           children: [
             const AppLogo(size: 34),
             const SizedBox(width: 10),
-            Text(_titles[_index]),
+            Flexible(
+              child: Text(
+                _titles[_index],
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Islamic tools',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const IslamicToolsScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.auto_stories_rounded),
+          ),
           if (entitlement?.active == true)
             Padding(
               padding: const EdgeInsets.only(right: 4),
@@ -126,14 +154,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
             icon: const Icon(Icons.settings_outlined),
           ),
-          if (!wide)
-            IconButton(
-              tooltip: 'Supplier orders',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const OrdersScreen()),
-              ),
-              icon: const Icon(Icons.local_shipping_outlined),
-            ),
           const SizedBox(width: 8),
         ],
       ),
@@ -167,19 +187,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       label: Text('Products'),
                     ),
                     NavigationRailDestination(
-                      icon: Icon(Icons.local_shipping_outlined),
-                      selectedIcon: Icon(Icons.local_shipping_rounded),
-                      label: Text('Orders'),
+                      icon: Icon(Icons.storefront_outlined),
+                      selectedIcon: Icon(Icons.storefront_rounded),
+                      label: Text('Listings'),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.people_outline_rounded),
                       selectedIcon: Icon(Icons.people_rounded),
                       label: Text('Customers'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.bar_chart_outlined),
-                      selectedIcon: Icon(Icons.bar_chart_rounded),
-                      label: Text('Reports'),
                     ),
                   ],
                 ),
@@ -191,8 +206,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       bottomNavigationBar: wide
           ? null
           : NavigationBar(
-              selectedIndex: _index > 3 ? _index - 1 : _index,
-              onDestinationSelected: (value) => setState(() => _index = value > 2 ? value + 1 : value),
+              selectedIndex: _index,
+              onDestinationSelected: (value) =>
+                  setState(() => _index = value),
               destinations: const [
                 NavigationDestination(
                   icon: Icon(Icons.space_dashboard_outlined),
@@ -210,14 +226,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   label: 'Products',
                 ),
                 NavigationDestination(
+                  icon: Icon(Icons.storefront_outlined),
+                  selectedIcon: Icon(Icons.storefront_rounded),
+                  label: 'Listings',
+                ),
+                NavigationDestination(
                   icon: Icon(Icons.people_outline_rounded),
                   selectedIcon: Icon(Icons.people_rounded),
                   label: 'Customers',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.bar_chart_outlined),
-                  selectedIcon: Icon(Icons.bar_chart_rounded),
-                  label: 'Reports',
                 ),
               ],
             ),

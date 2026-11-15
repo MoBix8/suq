@@ -120,23 +120,90 @@ Every listing records the publishing account in `publishedById` and returns the
 account as `publishedBy` (`{ id, name, phone }`). The field is set from the
 authenticated supplier token and cannot be chosen by the client.
 
+### Supplier profile and warehouse
+
+`GET /supplier/profile` returns the supplier account. `PATCH /supplier/profile`
+accepts any subset of `businessName`, `warehouseName`, `latitude`, `longitude`,
+`deliveryBaseFee`, `deliveryPerKm`, `deliveryPerKg`, and
+`deliveryPerCubicMeter`.
+
+Every supplier ships from one universal warehouse. New accounts default to
+**Merkato** (`warehouseName: "Merkato"`, `9.03056, 38.73889`). The supplier can
+rename or move it, and the app offers a map picker for the pin. Listings do not
+carry their own pickup point.
+
 ### Shop ordering
 
-`GET /orders/suppliers` returns suppliers with active listings. `POST /orders`
-accepts `{ supplierId, items: [{ listingId, quantity }], latitude?, longitude?, note? }`;
-each quantity must meet the listing's `minOrderQty`.
+`GET /orders/suppliers` returns suppliers with active listings, including each
+supplier's `warehouseName`, warehouse coordinates, and delivery rates.
 
-Delivery is suggested from the supplier's rates:
+`PATCH /orders/location` saves `{ latitude, longitude }` on the shop (send both
+`null` to clear it). The client also stores the pin locally so ordering keeps
+working offline.
 
-```text
-base fee
-+ distanceKm × deliveryPerKm
-+ shippingWeightKg × deliveryPerKg
-+ shippingVolumeM3 × deliveryPerCubicMeter
+`POST /orders` accepts
+`{ supplierId, items: [{ listingId, quantity }], latitude?, longitude?, note? }`;
+each quantity must meet the listing's `minOrderQty`. The coordinates in the body
+are saved as the shop pin when supplied.
+
+`POST /orders/quote` is a side-effect-free preview for the cart. It accepts the
+same `supplierId`, `items`, and optional coordinates and returns the subtotal,
+transport breakdown, total, warehouse, and `needsDistanceQuote`.
+
+The shop client also runs the same formula locally from the rates returned by
+`GET /orders/suppliers`, so the cart shows an instant estimate from the saved
+pin. The server recalculates the authoritative fee when the order is sent.
+
+```json
+{
+  "quote": {
+    "supplierId": "…",
+    "supplierName": "…",
+    "subtotal": 6400,
+    "deliveryFee": 430,
+    "total": 6830,
+    "deliveryDistanceKm": 4.2,
+    "shippingWeightKg": 50,
+    "shippingVolumeM3": 0.036,
+    "deliveryQuoted": true,
+    "needsDistanceQuote": false,
+    "breakdown": {
+      "baseFee": 50,
+      "distanceFee": 210,
+      "weightFee": 100,
+      "volumeFee": 70
+    },
+    "warehouse": {
+      "name": "Merkato",
+      "latitude": 9.03056,
+      "longitude": 38.73889
+    }
+  }
+}
 ```
 
-Fees and totals are rounded to 2 decimals. The supplier can override the quote
-with `PATCH /supplier/orders/:id/delivery` before accepting the order.
+Transport is suggested from the supplier's rates:
+
+```text
+volumePerUnitM3 = lengthCm × widthCm × heightCm ÷ 1,000,000
+shippingWeightKg = Σ weightPerUnitKg × quantity
+shippingVolumeM3 = Σ volumePerUnitM3 × quantity
+distanceKm = haversine(shop pin, warehouse pin)
+
+deliveryFee = baseFee
+            + distanceKm × deliveryPerKm
+            + shippingWeightKg × deliveryPerKg
+            + shippingVolumeM3 × deliveryPerCubicMeter
+```
+
+Fees and totals are rounded to 2 decimals. If the shop has no pin, distance is
+unknown: `deliveryQuoted` is `false`, the fee stays `0`, and the supplier quotes
+manually. `POST /orders` persists `deliveryBaseFee`, `deliveryDistanceFee`,
+`deliveryWeightFee`, `deliveryVolumeFee`, and `warehouseName`, so later rate
+changes never rewrite an existing order.
+
+The supplier can override the quote with
+`PATCH /supplier/orders/:id/delivery` before accepting the order.
 
 `PATCH /supplier/orders/:id/status` moves an order through
 `PENDING → ACCEPTED/REJECTED`, `ACCEPTED → READY`, and `READY → DELIVERED`.

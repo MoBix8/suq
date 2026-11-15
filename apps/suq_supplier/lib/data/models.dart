@@ -46,6 +46,7 @@ class SupplierProfile {
   const SupplierProfile({
     required this.id,
     required this.businessName,
+    this.warehouseName = 'Merkato',
     this.latitude,
     this.longitude,
     this.deliveryBaseFee = 0,
@@ -56,6 +57,7 @@ class SupplierProfile {
 
   final String id;
   final String businessName;
+  final String warehouseName;
   final double? latitude;
   final double? longitude;
   final double deliveryBaseFee;
@@ -69,6 +71,9 @@ class SupplierProfile {
       SupplierProfile(
         id: asString(json['id']),
         businessName: asString(json['businessName']),
+        warehouseName: asString(json['warehouseName']).isEmpty
+            ? 'Merkato'
+            : asString(json['warehouseName']),
         latitude: (json['latitude'] as num?)?.toDouble(),
         longitude: (json['longitude'] as num?)?.toDouble(),
         deliveryBaseFee: asDouble(json['deliveryBaseFee']),
@@ -317,6 +322,11 @@ class SupplierOrder {
     required this.status,
     required this.subtotal,
     required this.deliveryFee,
+    this.deliveryBaseFee = 0,
+    this.deliveryDistanceFee = 0,
+    this.deliveryWeightFee = 0,
+    this.deliveryVolumeFee = 0,
+    this.warehouseName,
     required this.total,
     this.deliveryDistanceKm,
     required this.deliveryQuoted,
@@ -335,6 +345,11 @@ class SupplierOrder {
   final String status;
   final double subtotal;
   final double deliveryFee;
+  final double deliveryBaseFee;
+  final double deliveryDistanceFee;
+  final double deliveryWeightFee;
+  final double deliveryVolumeFee;
+  final String? warehouseName;
   final double total;
   final double? deliveryDistanceKm;
   final bool deliveryQuoted;
@@ -367,6 +382,11 @@ class SupplierOrder {
         status: asString(json['status']),
         subtotal: asDouble(json['subtotal']),
         deliveryFee: asDouble(json['deliveryFee']),
+        deliveryBaseFee: asDouble(json['deliveryBaseFee']),
+        deliveryDistanceFee: asDouble(json['deliveryDistanceFee']),
+        deliveryWeightFee: asDouble(json['deliveryWeightFee']),
+        deliveryVolumeFee: asDouble(json['deliveryVolumeFee']),
+        warehouseName: _optionalString(json['warehouseName']),
         total: asDouble(json['total']),
         deliveryDistanceKm: (json['deliveryDistanceKm'] as num?)?.toDouble(),
         deliveryQuoted: json['deliveryQuoted'] as bool? ?? false,

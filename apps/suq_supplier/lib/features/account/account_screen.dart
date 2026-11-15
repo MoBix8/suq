@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
 import '../../core/formatters.dart';
@@ -8,6 +9,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/location_picker.dart';
 
 class AccountScreen extends ConsumerStatefulWidget {
   const AccountScreen({super.key});
@@ -19,6 +21,7 @@ class AccountScreen extends ConsumerStatefulWidget {
 class _AccountScreenState extends ConsumerState<AccountScreen> {
   final _formKey = GlobalKey<FormState>();
   final _businessName = TextEditingController();
+  final _warehouseName = TextEditingController();
   final _latitude = TextEditingController();
   final _longitude = TextEditingController();
   final _baseFee = TextEditingController();
@@ -44,6 +47,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
   @override
   void dispose() {
     _businessName.dispose();
+    _warehouseName.dispose();
     _latitude.dispose();
     _longitude.dispose();
     _baseFee.dispose();
@@ -59,6 +63,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
 
   void _populate(SupplierProfile profile) {
     _businessName.text = profile.businessName;
+    _warehouseName.text = profile.warehouseName;
     _latitude.text = profile.latitude == null
         ? ''
         : profile.latitude!.toStringAsFixed(6);
@@ -79,6 +84,9 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
 
     final body = <String, dynamic>{
       'businessName': _businessName.text.trim(),
+      'warehouseName': _warehouseName.text.trim().isEmpty
+          ? 'Merkato'
+          : _warehouseName.text.trim(),
       'latitude': latitude.isEmpty ? null : double.parse(latitude),
       'longitude': longitude.isEmpty ? null : double.parse(longitude),
       'deliveryBaseFee': double.tryParse(_baseFee.text.trim()) ?? 0,
@@ -120,6 +128,22 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
     if (!confirmed) return;
     if (!mounted) return;
     await ref.read(sessionProvider.notifier).logout();
+  }
+
+  Future<void> _pickWarehouseOnMap() async {
+    final lat = double.tryParse(_latitude.text.trim());
+    final lng = double.tryParse(_longitude.text.trim());
+    final initial =
+        lat != null && lng != null ? LatLng(lat, lng) : merkatoWarehouse;
+    final picked = await showWarehouseLocationPicker(
+      context,
+      initial: initial,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _latitude.text = picked.latitude.toStringAsFixed(6);
+      _longitude.text = picked.longitude.toStringAsFixed(6);
+    });
   }
 
   String? _coordinateError(String? value, {required bool latitude}) {
@@ -168,6 +192,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
     final form = _ProfileForm(
       formKey: _formKey,
       businessName: _businessName,
+      warehouseName: _warehouseName,
       latitude: _latitude,
       longitude: _longitude,
       baseFee: _baseFee,
@@ -175,6 +200,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
       perKg: _perKg,
       perCubicMeter: _perCubicMeter,
       coordinateError: _coordinateError,
+      onPickOnMap: _pickWarehouseOnMap,
       saving: _saving,
       onSave: _save,
     );
@@ -257,6 +283,7 @@ class _ProfileForm extends StatelessWidget {
   const _ProfileForm({
     required this.formKey,
     required this.businessName,
+    required this.warehouseName,
     required this.latitude,
     required this.longitude,
     required this.baseFee,
@@ -264,12 +291,14 @@ class _ProfileForm extends StatelessWidget {
     required this.perKg,
     required this.perCubicMeter,
     required this.coordinateError,
+    required this.onPickOnMap,
     required this.saving,
     required this.onSave,
   });
 
   final GlobalKey<FormState> formKey;
   final TextEditingController businessName;
+  final TextEditingController warehouseName;
   final TextEditingController latitude;
   final TextEditingController longitude;
   final TextEditingController baseFee;
@@ -277,6 +306,7 @@ class _ProfileForm extends StatelessWidget {
   final TextEditingController perKg;
   final TextEditingController perCubicMeter;
   final String? Function(String?, {required bool latitude}) coordinateError;
+  final Future<void> Function() onPickOnMap;
   final bool saving;
   final Future<void> Function() onSave;
 
@@ -317,8 +347,18 @@ class _ProfileForm extends StatelessWidget {
                       : null,
                 ),
                 const SizedBox(height: 12),
+                TextFormField(
+                  controller: warehouseName,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Warehouse name',
+                    prefixIcon: Icon(Icons.warehouse_outlined),
+                    helperText: 'Merkato is used when this is empty.',
+                  ),
+                ),
+                const SizedBox(height: 12),
                 const Text(
-                  'Pickup location',
+                  'Universal warehouse',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
@@ -327,12 +367,19 @@ class _ProfileForm extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 const Text(
-                  'Shops get an automatic delivery estimate from this point. Leave both fields empty to quote deliveries manually.',
+                  'Every listing ships from this one pickup point. It defaults to Merkato, Addis Ababa. '
+                  'Shops get an automatic delivery estimate from this pin, so leave both coordinates filled.',
                   style: TextStyle(
                     fontSize: 11.5,
                     color: SupplierColors.muted,
                     height: 1.4,
                   ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: onPickOnMap,
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('Pick warehouse on map'),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -700,11 +747,16 @@ class _AccountSidePanel extends StatelessWidget {
                 value: 'Supplier',
               ),
               KeyValueRow(
-                label: 'Pickup location',
-                value: profile.hasLocation ? 'Set' : 'Not set',
+                label: 'Warehouse',
+                value: profile.warehouseName,
+                bold: true,
+              ),
+              KeyValueRow(
+                label: 'Pickup pin',
+                value: profile.hasLocation ? 'Set' : 'Merkato default',
                 valueColor: profile.hasLocation
                     ? SupplierColors.success
-                    : SupplierColors.warning,
+                    : SupplierColors.muted,
                 bold: true,
               ),
             ],

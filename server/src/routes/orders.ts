@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireBoundDevice, requireShop } from "../auth";
 import { AppError, asyncHandler } from "../errors";
+import { computeDeliveryQuote } from "../lib/delivery";
 import { prisma } from "../prisma";
 
 export const ordersRouter = Router();
@@ -24,6 +25,13 @@ ordersRouter.get("/suppliers", asyncHandler(async (_req, res) => {
     select: {
       id: true,
       businessName: true,
+      warehouseName: true,
+      latitude: true,
+      longitude: true,
+      deliveryBaseFee: true,
+      deliveryPerKm: true,
+      deliveryPerKg: true,
+      deliveryPerCubicMeter: true,
       listings: {
         where: { active: true },
         include: { publishedBy: { select: { id: true, name: true } } },
@@ -35,56 +43,66 @@ ordersRouter.get("/suppliers", asyncHandler(async (_req, res) => {
   res.json({ suppliers });
 }));
 
+const orderItemSchema = z.object({
+  listingId: z.string().min(1),
+  quantity: z.number().int().min(1).max(10000).optional(),
+  // Kept for older clients that still send the previous field name.
+  packageCount: z.number().int().min(1).max(10000).optional(),
+}).refine((v) => v.quantity != null || v.packageCount != null, "Provide a quantity");
+
 const orderInput = z.object({
   supplierId: z.string().min(1),
   note: z.string().trim().max(500).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
-  items: z.array(z.object({
-    listingId: z.string().min(1),
-    quantity: z.number().int().min(1).max(10000).optional(),
-    // Kept for older clients that still send the previous field name.
-    packageCount: z.number().int().min(1).max(10000).optional(),
-  }).refine((v) => v.quantity != null || v.packageCount != null, "Provide a quantity")).min(1).max(100),
-}).refine((v) => v.latitude == null === (v.longitude == null), "Provide both coordinates together");
+  items: z.array(orderItemSchema).min(1).max(100),
+}).refine((v) => (v.latitude == null) === (v.longitude == null), "Provide both coordinates together");
 
-function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const radians = (degrees: number) => degrees * Math.PI / 180;
-  const dLat = radians(bLat - aLat);
-  const dLng = radians(bLng - aLng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(radians(aLat)) * Math.cos(radians(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+const quoteInput = z.object({
+  supplierId: z.string().min(1),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  items: z.array(orderItemSchema).min(1).max(100),
+}).refine((v) => (v.latitude == null) === (v.longitude == null), "Provide both coordinates together");
+
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+function volumePerUnit(listing: {
+  volumePerUnitM3: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+}): number {
+  return listing.volumePerUnitM3 ||
+    (listing.lengthCm * listing.widthCm * listing.heightCm) / 1_000_000;
 }
 
-ordersRouter.post("/", asyncHandler(async (req, res) => {
-  const { shopId } = requireShop(req);
-  const body = orderInput.parse(req.body);
-  const [shop, supplier, listings] = await Promise.all([
-    prisma.shop.findUniqueOrThrow({ where: { id: shopId } }),
-    prisma.supplier.findUnique({ where: { id: body.supplierId } }),
-    prisma.supplierListing.findMany({ where: { supplierId: body.supplierId, active: true, id: { in: body.items.map((i) => i.listingId) } } }),
-  ]);
-  if (!supplier) throw new AppError(404, "Supplier not found");
-  if (listings.length !== new Set(body.items.map((i) => i.listingId)).size) throw new AppError(400, "One or more items are unavailable");
-  const lat = body.latitude ?? shop.latitude;
-  const lng = body.longitude ?? shop.longitude;
-  const distance = lat != null && lng != null && supplier.latitude != null && supplier.longitude != null
-    ? haversineKm(lat, lng, supplier.latitude, supplier.longitude)
-    : null;
-  if (body.latitude != null && body.longitude != null) {
-    await prisma.shop.update({ where: { id: shopId }, data: { latitude: body.latitude, longitude: body.longitude } });
+async function buildLines(
+  supplierId: string,
+  items: Array<{ listingId: string; quantity?: number; packageCount?: number }>,
+) {
+  const listings = await prisma.supplierListing.findMany({
+    where: {
+      supplierId,
+      active: true,
+      id: { in: items.map((item) => item.listingId) },
+    },
+  });
+  if (listings.length !== new Set(items.map((item) => item.listingId)).size) {
+    throw new AppError(400, "One or more items are unavailable");
   }
 
-  const roundMoney = (value: number) => Math.round(value * 100) / 100;
   const listingMap = new Map(listings.map((listing) => [listing.id, listing]));
-  const lines = body.items.map((input) => {
+  const lines = items.map((input) => {
     const listing = listingMap.get(input.listingId)!;
     const quantity = input.quantity ?? input.packageCount!;
     if (quantity < listing.minOrderQty) {
-      throw new AppError(400, `${listing.name} has a minimum order of ${listing.minOrderQty} ${listing.saleUnit}`);
+      throw new AppError(
+        400,
+        `${listing.name} has a minimum order of ${listing.minOrderQty} ${listing.saleUnit}`,
+      );
     }
-    const volumePerUnit = listing.volumePerUnitM3 ||
-      (listing.lengthCm * listing.widthCm * listing.heightCm) / 1_000_000;
+    const unitVolume = volumePerUnit(listing);
     return {
       listingId: listing.id,
       listingName: listing.name,
@@ -94,27 +112,113 @@ ordersRouter.post("/", asyncHandler(async (req, res) => {
       unitPrice: listing.pricePerUnit,
       lineTotal: roundMoney(listing.pricePerUnit * quantity),
       weightKg: Math.round(listing.weightPerUnitKg * quantity * 1000) / 1000,
-      volumeCubicM: Math.round(volumePerUnit * quantity * 1_000_000) / 1_000_000,
+      volumeCubicM: Math.round(unitVolume * quantity * 1_000_000) / 1_000_000,
       lengthCm: listing.lengthCm,
       widthCm: listing.widthCm,
       heightCm: listing.heightCm,
     };
   });
-  const subtotal = roundMoney(lines.reduce((sum, line) => sum + line.lineTotal, 0));
-  const weight = lines.reduce((sum, line) => sum + line.weightKg, 0);
-  const volume = lines.reduce((sum, line) => sum + line.volumeCubicM, 0);
-  const deliveryFee = roundMoney(supplier.deliveryBaseFee + (distance ?? 0) * supplier.deliveryPerKm + weight * supplier.deliveryPerKg + volume * supplier.deliveryPerCubicMeter);
+
+  return {
+    lines,
+    subtotal: roundMoney(lines.reduce((sum, line) => sum + line.lineTotal, 0)),
+    weightKg: lines.reduce((sum, line) => sum + line.weightKg, 0),
+    volumeM3: lines.reduce((sum, line) => sum + line.volumeCubicM, 0),
+  };
+}
+
+ordersRouter.post("/quote", asyncHandler(async (req, res) => {
+  const { shopId } = requireShop(req);
+  const body = quoteInput.parse(req.body);
+  const [shop, supplier] = await Promise.all([
+    prisma.shop.findUniqueOrThrow({ where: { id: shopId } }),
+    prisma.supplier.findUnique({ where: { id: body.supplierId } }),
+  ]);
+  if (!supplier) throw new AppError(404, "Supplier not found");
+
+  const built = await buildLines(body.supplierId, body.items);
+  const delivery = computeDeliveryQuote({
+    supplier,
+    shopLatitude: body.latitude ?? shop.latitude,
+    shopLongitude: body.longitude ?? shop.longitude,
+    weightKg: built.weightKg,
+    volumeM3: built.volumeM3,
+  });
+
+  res.json({
+    quote: {
+      supplierId: supplier.id,
+      supplierName: supplier.businessName,
+      subtotal: built.subtotal,
+      deliveryFee: delivery.deliveryFee,
+      total: roundMoney(built.subtotal + delivery.deliveryFee),
+      deliveryDistanceKm: delivery.distanceKm,
+      shippingWeightKg: delivery.weightKg,
+      shippingVolumeM3: delivery.volumeM3,
+      deliveryQuoted: delivery.quoted,
+      needsDistanceQuote: !delivery.quoted,
+      breakdown: {
+        baseFee: delivery.baseFee,
+        distanceFee: delivery.distanceFee,
+        weightFee: delivery.weightFee,
+        volumeFee: delivery.volumeFee,
+      },
+      warehouse: delivery.warehouse,
+    },
+  });
+}));
+
+ordersRouter.post("/", asyncHandler(async (req, res) => {
+  const { shopId } = requireShop(req);
+  const body = orderInput.parse(req.body);
+  const [shop, supplier] = await Promise.all([
+    prisma.shop.findUniqueOrThrow({ where: { id: shopId } }),
+    prisma.supplier.findUnique({ where: { id: body.supplierId } }),
+  ]);
+  if (!supplier) throw new AppError(404, "Supplier not found");
+
+  const built = await buildLines(body.supplierId, body.items);
+  const delivery = computeDeliveryQuote({
+    supplier,
+    shopLatitude: body.latitude ?? shop.latitude,
+    shopLongitude: body.longitude ?? shop.longitude,
+    weightKg: built.weightKg,
+    volumeM3: built.volumeM3,
+  });
+
+  if (body.latitude != null && body.longitude != null) {
+    await prisma.shop.update({
+      where: { id: shopId },
+      data: { latitude: body.latitude, longitude: body.longitude },
+    });
+  }
+
   const order = await prisma.shopOrder.create({
     data: {
-      shopId, supplierId: supplier.id, subtotal, deliveryFee, total: roundMoney(subtotal + deliveryFee),
-      deliveryDistanceKm: distance, deliveryQuoted: distance != null,
-      shippingWeightKg: Math.round(weight * 1000) / 1000,
-      shippingVolumeM3: Math.round(volume * 1_000_000) / 1_000_000,
-      note: body.note, items: { create: lines },
+      shopId,
+      supplierId: supplier.id,
+      subtotal: built.subtotal,
+      deliveryFee: delivery.deliveryFee,
+      deliveryBaseFee: delivery.baseFee,
+      deliveryDistanceFee: delivery.distanceFee,
+      deliveryWeightFee: delivery.weightFee,
+      deliveryVolumeFee: delivery.volumeFee,
+      warehouseName: delivery.warehouse.name,
+      total: roundMoney(built.subtotal + delivery.deliveryFee),
+      deliveryDistanceKm: delivery.distanceKm,
+      deliveryQuoted: delivery.quoted,
+      shippingWeightKg: delivery.weightKg,
+      shippingVolumeM3: delivery.volumeM3,
+      note: body.note,
+      items: { create: built.lines },
     },
-    include: { items: true, supplier: { select: { businessName: true } } },
+    include: {
+      items: true,
+      supplier: { select: { businessName: true, warehouseName: true } },
+    },
   });
-  res.status(201).json({ order, needsDistanceQuote: distance == null });
+
+  res.status(201).json({ order, needsDistanceQuote: !delivery.quoted });
 }));
 
 ordersRouter.get("/", asyncHandler(async (req, res) => {
@@ -123,7 +227,7 @@ ordersRouter.get("/", asyncHandler(async (req, res) => {
     where: { shopId },
     include: {
       items: true,
-      supplier: { select: { businessName: true } },
+      supplier: { select: { businessName: true, warehouseName: true } },
       acceptedBy: { select: { id: true, name: true, phone: true } },
     },
     orderBy: { createdAt: "desc" },

@@ -54,8 +54,11 @@ model Supplier {
   userId                String   @unique
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessName          String
-  latitude              Float?
-  longitude             Float?
+  // Every supplier ships from one universal warehouse. Merkato is the default
+  // because it is the main wholesale hub in Addis Ababa.
+  warehouseName         String   @default("Merkato")
+  latitude              Float?   @default(9.03056)
+  longitude             Float?   @default(38.73889)
   deliveryBaseFee       Float    @default(0)
   deliveryPerKm         Float    @default(0)
   deliveryPerKg         Float    @default(0)
@@ -240,6 +243,13 @@ model ShopOrder {
   status             String          @default("PENDING") // PENDING | ACCEPTED | REJECTED | READY | DELIVERED | CANCELLED
   subtotal           Float
   deliveryFee        Float
+  // Persisted delivery quote so the breakdown stays accurate even if the
+  // supplier changes rates later.
+  deliveryBaseFee    Float           @default(0)
+  deliveryDistanceFee Float          @default(0)
+  deliveryWeightFee  Float           @default(0)
+  deliveryVolumeFee  Float           @default(0)
+  warehouseName      String?
   total              Float
   deliveryDistanceKm Float?
   deliveryQuoted     Boolean         @default(false)

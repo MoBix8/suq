@@ -178,10 +178,47 @@ class SessionController extends Notifier<SessionState> {
     state = SessionState(token: token, user: user, shop: shop);
   }
 
+  Future<void> updateShopLocation({
+    required double? latitude,
+    required double? longitude,
+  }) async {
+    final shop = state.shop;
+    if (shop == null) return;
+
+    final updated = shop.copyWith(
+      latitude: latitude,
+      longitude: longitude,
+      clearLocation: latitude == null || longitude == null,
+    );
+    final prefs = ref.read(prefsProvider);
+    await prefs.setString('auth.shop', jsonEncode(updated.toJson()));
+    if (latitude != null && longitude != null) {
+      await prefs.setDouble('shop.latitude', latitude);
+      await prefs.setDouble('shop.longitude', longitude);
+    } else {
+      await prefs.remove('shop.latitude');
+      await prefs.remove('shop.longitude');
+    }
+    state = SessionState(token: state.token, user: state.user, shop: updated);
+
+    // Save locally first so ordering still works offline. The next successful
+    // call syncs the pin to the server.
+    try {
+      await ref.read(apiProvider).patch(
+            '/orders/location',
+            body: {'latitude': latitude, 'longitude': longitude},
+          );
+    } catch (_) {}
+  }
+
   Future<void> logout() async {
     final token = state.token;
     if (token != null && token.isNotEmpty) {
-      await ref.read(apiProvider).post('/auth/logout');
+      // Logging out must work offline, so a failed server call never blocks the
+      // local cleanup below.
+      try {
+        await ref.read(apiProvider).post('/auth/logout');
+      } catch (_) {}
     }
 
     final prefs = ref.read(prefsProvider);
@@ -189,7 +226,11 @@ class SessionController extends Notifier<SessionState> {
     await prefs.remove('auth.user');
     await prefs.remove('auth.shop');
     await prefs.remove('entitlement.token');
+    await prefs.remove('entitlement.daysLeft');
+    await prefs.remove('entitlement.endsAtMs');
     await prefs.remove('carts.state');
+    await prefs.remove('supplier.cart');
+    await prefs.remove('supplier.favorites');
     ref.read(apiProvider).setToken(null);
     state = const SessionState();
   }
@@ -203,15 +244,55 @@ final entitlementProvider =
 );
 
 class EntitlementController extends AsyncNotifier<EntitlementState> {
+  static const _daysLeftKey = 'entitlement.daysLeft';
+  static const _endsAtKey = 'entitlement.endsAtMs';
+
+  Timer? _recheckTimer;
+  bool _disposed = false;
+
   @override
   Future<EntitlementState> build() async {
+    _disposed = false;
+    _recheckTimer?.cancel();
+    _recheckTimer = Timer.periodic(
+      const Duration(minutes: 15),
+      (_) => unawaited(recheck()),
+    );
+    ref.onDispose(() {
+      _disposed = true;
+      _recheckTimer?.cancel();
+      _recheckTimer = null;
+    });
     ref.watch(sessionProvider);
     return _load();
   }
 
-  Future<void> refresh() async {
-    state = const AsyncLoading();
+  Future<void> refresh({bool silent = false}) async {
+    if (!silent) state = const AsyncLoading();
     state = await AsyncValue.guard(_load);
+  }
+
+  /// Re-evaluates the cached signed lease without touching the network.
+  ///
+  /// This is what makes the offline lease expire while the app stays open.
+  Future<void> recheck() async {
+    if (_disposed) return;
+    try {
+      final session = ref.read(sessionProvider);
+      if (!session.isLoggedIn) return;
+      final token = ref.read(prefsProvider).getString('entitlement.token');
+      if (token == null) return;
+      final evaluated = await _evaluate(
+        token,
+        session.shop!.id,
+        ref.read(trustedClockProvider),
+      );
+      if (_disposed || evaluated == null) return;
+      state = AsyncData(evaluated);
+    } catch (_) {
+      // A recheck runs on a timer; a disposed provider or a storage hiccup must
+      // never surface as an unhandled error.
+    }
   }
 
   Future<EntitlementState> _load() async {
@@ -292,13 +373,21 @@ class EntitlementController extends AsyncNotifier<EntitlementState> {
     final payload = await EntitlementVerifier.verify(token);
     if (payload == null) return null;
     if (payload['shopId'] != shopId) return null;
+    if (payload['deviceId'] != ref.read(deviceIdProvider)) return null;
 
     final startsAt = DateTime.tryParse(payload['startsAt'] as String? ?? '')?.toLocal();
     final endsAt = DateTime.tryParse(payload['endsAt'] as String? ?? '')?.toLocal();
     final leaseUntil = DateTime.tryParse(payload['leaseUntil'] as String? ?? '')?.toLocal();
+    final issuedAt = DateTime.tryParse(payload['issuedAt'] as String? ?? '')?.toLocal();
     if (startsAt == null || endsAt == null || leaseUntil == null) return null;
 
-    final now = clock.now();
+    final clockNow = clock.now();
+    // The signed token itself records when the server issued it. Even if local
+    // storage is wiped, the device clock can never be treated as earlier than
+    // that signed moment.
+    final now = issuedAt != null && clockNow.isBefore(issuedAt)
+        ? issuedAt
+        : clockNow;
     final tampered = !ignoreTamper && clock.tampered;
     final packageName = payload['packageName'] as String?;
 
@@ -317,8 +406,24 @@ class EntitlementController extends AsyncNotifier<EntitlementState> {
         now.isBefore(leaseUntil) &&
         now.isBefore(endsAt);
 
+    final prefs = ref.read(prefsProvider);
     final daysLeft = _ceilDays(endsAt.difference(now));
     final offlineDaysLeft = _ceilDays(leaseUntil.difference(now));
+
+    // Offline evaluations must never report more days than the last verified
+    // check, or more than the signed token reported when it was issued. A fresh
+    // server response is authoritative, so it resets the ceiling.
+    var daysLeftToShow = daysLeft;
+    if (!ignoreTamper) {
+      final cachedEndsAt = prefs.getInt(_endsAtKey);
+      final cachedDaysLeft = prefs.getInt(_daysLeftKey);
+      final cachedCeiling =
+          cachedEndsAt == endsAt.millisecondsSinceEpoch ? cachedDaysLeft : null;
+      final issuedDaysLeft =
+          issuedAt == null ? null : _ceilDays(endsAt.difference(issuedAt));
+      final ceiling = cachedCeiling ?? issuedDaysLeft;
+      if (ceiling != null && daysLeft > ceiling) daysLeftToShow = ceiling;
+    }
 
     if (!active) {
       return EntitlementState.locked(
@@ -330,13 +435,18 @@ class EntitlementController extends AsyncNotifier<EntitlementState> {
       );
     }
 
+    if (ignoreTamper) {
+      await prefs.setInt(_endsAtKey, endsAt.millisecondsSinceEpoch);
+      await prefs.setInt(_daysLeftKey, daysLeftToShow);
+    }
+
     return EntitlementState(
       active: true,
       packageName: packageName,
       startsAt: startsAt,
       endsAt: endsAt,
       leaseUntil: leaseUntil,
-      daysLeft: daysLeft,
+      daysLeft: daysLeftToShow,
       offlineDaysLeft: offlineDaysLeft,
     );
   }

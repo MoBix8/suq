@@ -43,6 +43,8 @@ class ShopInfo {
     this.city,
     this.subcity,
     this.phone,
+    this.latitude,
+    this.longitude,
   });
 
   final String id;
@@ -50,6 +52,29 @@ class ShopInfo {
   final String? city;
   final String? subcity;
   final String? phone;
+  final double? latitude;
+  final double? longitude;
+
+  bool get hasLocation => latitude != null && longitude != null;
+
+  ShopInfo copyWith({
+    String? name,
+    String? city,
+    String? subcity,
+    String? phone,
+    double? latitude,
+    double? longitude,
+    bool clearLocation = false,
+  }) =>
+      ShopInfo(
+        id: id,
+        name: name ?? this.name,
+        city: city ?? this.city,
+        subcity: subcity ?? this.subcity,
+        phone: phone ?? this.phone,
+        latitude: clearLocation ? null : (latitude ?? this.latitude),
+        longitude: clearLocation ? null : (longitude ?? this.longitude),
+      );
 
   factory ShopInfo.fromJson(Map<String, dynamic> json) => ShopInfo(
         id: json['id'] as String? ?? '',
@@ -57,6 +82,8 @@ class ShopInfo {
         city: json['city'] as String?,
         subcity: json['subcity'] as String?,
         phone: json['phone'] as String?,
+        latitude: (json['latitude'] as num?)?.toDouble(),
+        longitude: (json['longitude'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -65,6 +92,8 @@ class ShopInfo {
         'city': city,
         'subcity': subcity,
         'phone': phone,
+        'latitude': latitude,
+        'longitude': longitude,
       };
 }
 
@@ -849,7 +878,8 @@ class EntitlementState {
   final int offlineDaysLeft;
   final String? message;
 
-  bool get leaseExpired => leaseUntil != null && leaseUntil!.isBefore(DateTime.now());
+  bool leaseExpiredAt(DateTime now) =>
+      leaseUntil != null && leaseUntil!.isBefore(now);
 }
 
 // ─── Multi-cart ──────────────────────────────────────────────────────────────

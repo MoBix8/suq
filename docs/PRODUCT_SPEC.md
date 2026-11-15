@@ -39,7 +39,7 @@ transfers, handwritten credit books, and cheap Android phones.
 | "I decide my prices" | Per-shop selling price; optional buying price for profit |
 | "Some customers pay later" | Customer ledger, credit sales, repayments, outstanding balance |
 | "How was today?" | Daily dashboard: revenue, profit, sales count, credit given |
-| "Which products make money?" | Reports: top products, low stock, 7-day trend, P&L |
+| "Which products make money?" | Home dashboard: top products, low stock, 7-day trend, P&L |
 | "I paid for a month" | Manual bank payment → transaction number → admin approval |
 | "I have no internet" | Everything above works offline; sync when connected |
 
@@ -111,7 +111,9 @@ claims the new device.
 - "Receive payment" decreases the balance and records the method/note.
 - The customer list shows total outstanding credit and who is over their limit.
 
-## 9. Reports
+## 9. Dashboard insights
+
+Shown on the Home dashboard; there is no separate Reports page.
 
 - Today: revenue, cost, profit, sales count, credit given, cash collected.
 - Last 7 days chart.
@@ -134,13 +136,60 @@ claims the new device.
 1. Splash / session restore
 2. Login / Register
 3. Activation gate (plans, bank details, transaction submission, pending state)
-4. Home dashboard
+4. Home dashboard (includes sales insights and reports)
 5. Checkout (multi-cart)
 6. My products + product editor
 7. Library browser/downloader
 8. Customers + customer ledger
-9. Reports
-10. Subscription / account / settings
+9. Subscription / account / settings
+10. Islamic tools (Qur'an reader by mushaf page)
+
+### Islamic tools
+
+The shop app has an Islamic tools area, reached from the book icon in the app
+bar.
+
+- **Qur'an reader** — the 604-page Madinah mushaf rendered as Uthmani text on
+  its printed line grid (surah bands, bismillah lines and ayah markers), not as
+  page images. Every printed line is justified from margin to margin; the short
+  final line of a surah or page is aligned to the right as in the printed book.
+  The page fills the screen between the header and the footer page number, and
+  is set in the bundled **Amiri Quran** typeface so it reads like a printed
+  mushaf. Swipe, the arrow buttons, the keyboard arrows, or the surah/page
+  picker move between pages. The last read page is remembered in
+  `SharedPreferences`.
+- **Page and list views** — the reader can show the printed page or a scrolling
+  list of the **whole surah** with the selected translation. The list opens at
+  the verse printed on the current page, keeps the verse being recited in view
+  as playback continues, and highlights the active word. The choice is
+  remembered in `SharedPreferences`.
+- **Page bookmarks** — any mushaf page can be bookmarked from the header. Saved
+  pages appear as chips in the surah/page picker and are kept on the device in
+  `SharedPreferences`; no account or connection is needed.
+- **Page themes** — Paper, Ivory, Sepia, Sand, Mint, Night, Midnight and
+  Graphite colour the page, header, footer and the solid recitation highlight
+  together, so the chrome always matches the page. The theme picker previews
+  each palette. The chosen theme is remembered in `SharedPreferences`.
+- **Recitation** — opening the reader does not start playback; turning to a page
+  starts that page's recitation, and playback continues through the following
+  pages and surahs. Pausing stops automatic page starts until play is pressed
+  again. Each word is highlighted as it is voiced, using the reciter's word
+  timings. The footer has play/pause, and the header picks from twelve
+  recitations (default Mishary al-Afasy, Murattal). The choice is remembered in
+  `SharedPreferences`.
+- **Offline downloads** — the offline sheet can save a single surah, the whole
+  reciter, or all 604 page texts to the device (under the app support
+  directory), with progress and cancellation. Downloaded surahs play from the
+  device; anything not downloaded streams. Page text is always cached as it is
+  read, so the mushaf opens offline even when no audio has been downloaded.
+  Translations, tafsir and streaming recitation need a connection.
+- **Verse study** — tapping any word opens that ayah's translations (English,
+  Amharic, Oromo, Somali and Swahili) and tafsir (Arabic: Muyassar by default,
+  plus Sa'di, Ibn Kathir, Tabari, Qurtubi, Baghawi and Wasit; English: Ibn
+  Kathir Abridged, Ma'arif al-Qur'an and Tazkirul Quran). The sheet can also
+  restart recitation from that verse. Tigrinya translation and Amharic, Oromo,
+  Somali or Swahili tafsir are not published by the source.
+- Qibla, prayer times, tasbih and du'as are planned for later releases.
 
 ## 12. Screens (admin app)
 
