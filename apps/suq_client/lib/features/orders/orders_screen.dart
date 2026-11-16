@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/api_client.dart';
 import '../../core/formatters.dart';
 import '../../core/theme.dart';
+import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/location_picker.dart';
