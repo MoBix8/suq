@@ -4,6 +4,7 @@ import { requireAuth, requireBoundDevice, requireShop } from "../auth";
 import { AppError, asyncHandler } from "../errors";
 import { computeDeliveryQuote } from "../lib/delivery";
 import { prisma } from "../prisma";
+import { pageParams, pageMeta } from "../lib/pagination";
 
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth, requireBoundDevice);
@@ -223,14 +224,20 @@ ordersRouter.post("/", asyncHandler(async (req, res) => {
 
 ordersRouter.get("/", asyncHandler(async (req, res) => {
   const { shopId } = requireShop(req);
-  const orders = await prisma.shopOrder.findMany({
-    where: { shopId },
-    include: {
-      items: true,
-      supplier: { select: { businessName: true, warehouseName: true } },
-      acceptedBy: { select: { id: true, name: true, phone: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json({ orders });
+  const paging = pageParams(req.query as Record<string, unknown>, 20, 100);
+  const [total, orders] = await Promise.all([
+    prisma.shopOrder.count({ where: { shopId } }),
+    prisma.shopOrder.findMany({
+      where: { shopId },
+      include: {
+        items: true,
+        supplier: { select: { businessName: true, warehouseName: true } },
+        acceptedBy: { select: { id: true, name: true, phone: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: paging.skip,
+      take: paging.take,
+    }),
+  ]);
+  res.json({ orders, ...pageMeta(total, paging) });
 }));

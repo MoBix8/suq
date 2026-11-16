@@ -160,7 +160,7 @@ final categoriesProvider = FutureProvider<List<SupplierCategory>>((ref) async {
 });
 
 final productsProvider = FutureProvider<List<SupplierProduct>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/supplier/products');
+  final response = await ref.watch(apiProvider).get('/supplier/products', query: {'page': '1', 'pageSize': '50'});
   return (response['products'] as List? ?? const [])
       .whereType<Map>()
       .map((row) => SupplierProduct.fromJson(asMap(row)))
@@ -168,7 +168,7 @@ final productsProvider = FutureProvider<List<SupplierProduct>>((ref) async {
 });
 
 final listingsProvider = FutureProvider<List<SupplierListing>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/supplier/listings');
+  final response = await ref.watch(apiProvider).get('/supplier/listings', query: {'page': '1', 'pageSize': '50'});
   return (response['listings'] as List? ?? const [])
       .whereType<Map>()
       .map((row) => SupplierListing.fromJson(asMap(row)))
@@ -191,7 +191,7 @@ class RecentListingController extends Notifier<SupplierListing?> {
 }
 
 final ordersProvider = FutureProvider<List<SupplierOrder>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/supplier/orders');
+  final response = await ref.watch(apiProvider).get('/supplier/orders', query: {'page': '1', 'pageSize': '20'});
   return (response['orders'] as List? ?? const [])
       .whereType<Map>()
       .map((row) => SupplierOrder.fromJson(asMap(row)))

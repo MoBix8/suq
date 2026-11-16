@@ -107,7 +107,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
       final api = ref.read(apiProvider);
       final results = await Future.wait([
         api.get('/orders/suppliers'),
-        api.get('/orders'),
+        api.get('/orders', query: {'page': '1', 'pageSize': '20'}),
       ]);
       if (!mounted) return;
 
@@ -177,16 +177,16 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
             listing['supplierName']?.toString() ?? entry.supplierName,
         name: listing['name']?.toString() ?? entry.name,
         saleUnit: listing['saleUnit']?.toString() ?? entry.saleUnit,
-        price: (listing['pricePerUnit'] as num?)?.toDouble() ?? entry.price,
+        price: ((listing['pricePerUnit']) is num ? (listing['pricePerUnit'] as num).toDouble() : null) ?? entry.price,
         minOrder: minOrder,
         qty: entry.qty < minOrder ? minOrder : entry.qty,
-        weightPerUnitKg: (listing['weightPerUnitKg'] as num?)?.toDouble() ??
+        weightPerUnitKg: ((listing['weightPerUnitKg']) is num ? (listing['weightPerUnitKg'] as num).toDouble() : null) ??
             entry.weightPerUnitKg,
-        volumePerUnitM3: (listing['volumePerUnitM3'] as num?)?.toDouble() ??
+        volumePerUnitM3: ((listing['volumePerUnitM3']) is num ? (listing['volumePerUnitM3'] as num).toDouble() : null) ??
             entry.volumePerUnitM3,
-        lengthCm: (listing['lengthCm'] as num?)?.toDouble() ?? entry.lengthCm,
-        widthCm: (listing['widthCm'] as num?)?.toDouble() ?? entry.widthCm,
-        heightCm: (listing['heightCm'] as num?)?.toDouble() ?? entry.heightCm,
+        lengthCm: ((listing['lengthCm']) is num ? (listing['lengthCm'] as num).toDouble() : null) ?? entry.lengthCm,
+        widthCm: ((listing['widthCm']) is num ? (listing['widthCm'] as num).toDouble() : null) ?? entry.widthCm,
+        heightCm: ((listing['heightCm']) is num ? (listing['heightCm'] as num).toDouble() : null) ?? entry.heightCm,
       );
     }
 
@@ -222,7 +222,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
   }
 
   int _minOrder(Map<String, dynamic> listing) =>
-      ((listing['minOrderQty'] as num?)?.toInt() ?? 1).clamp(1, 10000).toInt();
+      (((listing['minOrderQty']) is num ? (listing['minOrderQty'] as num) : null)?.toInt() ?? 1).clamp(1, 10000).toInt();
 
   List<Map<String, dynamic>> get _filteredListings {
     final query = _query.trim().toLowerCase();
@@ -316,16 +316,16 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
         supplierName: listing['supplierName']?.toString() ?? 'Supplier',
         name: listing['name']?.toString() ?? 'Listing',
         saleUnit: listing['saleUnit']?.toString() ?? 'unit',
-        price: (listing['pricePerUnit'] as num?)?.toDouble() ?? 0,
+        price: ((listing['pricePerUnit']) is num ? (listing['pricePerUnit'] as num).toDouble() : null) ?? 0,
         minOrder: minOrder,
         qty: minOrder,
         weightPerUnitKg:
-            (listing['weightPerUnitKg'] as num?)?.toDouble() ?? 0,
+            ((listing['weightPerUnitKg']) is num ? (listing['weightPerUnitKg'] as num).toDouble() : null) ?? 0,
         volumePerUnitM3:
-            (listing['volumePerUnitM3'] as num?)?.toDouble() ?? 0,
-        lengthCm: (listing['lengthCm'] as num?)?.toDouble() ?? 0,
-        widthCm: (listing['widthCm'] as num?)?.toDouble() ?? 0,
-        heightCm: (listing['heightCm'] as num?)?.toDouble() ?? 0,
+            ((listing['volumePerUnitM3']) is num ? (listing['volumePerUnitM3'] as num).toDouble() : null) ?? 0,
+        lengthCm: ((listing['lengthCm']) is num ? (listing['lengthCm'] as num).toDouble() : null) ?? 0,
+        widthCm: ((listing['widthCm']) is num ? (listing['widthCm'] as num).toDouble() : null) ?? 0,
+        heightCm: ((listing['heightCm']) is num ? (listing['heightCm'] as num).toDouble() : null) ?? 0,
       );
       _persistCart();
       _recalculateQuotes();
@@ -484,7 +484,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
         final order = Map<String, dynamic>.from(
           response['order'] as Map? ?? const {},
         );
-        total += (order['total'] as num?)?.toDouble() ?? 0;
+        total += ((order['total']) is num ? (order['total'] as num).toDouble() : null) ?? 0;
         if (response['needsDistanceQuote'] == true) needsDistanceQuote = true;
         sentIds.addAll(group.map((entry) => entry.listingId));
         sentOrders++;
@@ -1214,8 +1214,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
     final saleUnit = listing['saleUnit']?.toString() ?? 'piece';
     final category = listing['category']?.toString() ?? '';
     final supplierName = listing['supplierName']?.toString() ?? 'Supplier';
-    final price = (listing['pricePerUnit'] as num?)?.toDouble() ?? 0;
-    final pieces = (listing['piecesPerUnit'] as num?)?.toInt() ?? 1;
+    final price = ((listing['pricePerUnit']) is num ? (listing['pricePerUnit'] as num).toDouble() : null) ?? 0;
+    final pieces = ((listing['piecesPerUnit']) is num ? (listing['piecesPerUnit'] as num) : null)?.toInt() ?? 1;
     final pack = pieces > 1 ? ' · $pieces pcs / $saleUnit' : '';
     final minOrder = _minOrder(listing);
     final count = _cart[id]?.qty ?? 0;
@@ -1359,22 +1359,22 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
     final items = order['items'] as List? ?? [];
     final status = order['status']?.toString() ?? 'PENDING';
     final createdAt = DateTime.tryParse(order['createdAt']?.toString() ?? '');
-    final subtotal = (order['subtotal'] as num?)?.toDouble() ?? 0;
-    final deliveryFee = (order['deliveryFee'] as num?)?.toDouble() ?? 0;
+    final subtotal = ((order['subtotal']) is num ? (order['subtotal'] as num).toDouble() : null) ?? 0;
+    final deliveryFee = ((order['deliveryFee']) is num ? (order['deliveryFee'] as num).toDouble() : null) ?? 0;
     final deliveryQuoted = order['deliveryQuoted'] == true;
-    final deliveryBaseFee = (order['deliveryBaseFee'] as num?)?.toDouble() ?? 0;
+    final deliveryBaseFee = ((order['deliveryBaseFee']) is num ? (order['deliveryBaseFee'] as num).toDouble() : null) ?? 0;
     final deliveryDistanceFee =
-        (order['deliveryDistanceFee'] as num?)?.toDouble() ?? 0;
+        ((order['deliveryDistanceFee']) is num ? (order['deliveryDistanceFee'] as num).toDouble() : null) ?? 0;
     final deliveryWeightFee =
-        (order['deliveryWeightFee'] as num?)?.toDouble() ?? 0;
+        ((order['deliveryWeightFee']) is num ? (order['deliveryWeightFee'] as num).toDouble() : null) ?? 0;
     final deliveryVolumeFee =
-        (order['deliveryVolumeFee'] as num?)?.toDouble() ?? 0;
+        ((order['deliveryVolumeFee']) is num ? (order['deliveryVolumeFee'] as num).toDouble() : null) ?? 0;
     final deliveryDistanceKm =
-        (order['deliveryDistanceKm'] as num?)?.toDouble();
+        ((order['deliveryDistanceKm']) is num ? (order['deliveryDistanceKm'] as num).toDouble() : null);
     final shippingWeightKg =
-        (order['shippingWeightKg'] as num?)?.toDouble() ?? 0;
+        ((order['shippingWeightKg']) is num ? (order['shippingWeightKg'] as num).toDouble() : null) ?? 0;
     final shippingVolumeM3 =
-        (order['shippingVolumeM3'] as num?)?.toDouble() ?? 0;
+        ((order['shippingVolumeM3']) is num ? (order['shippingVolumeM3'] as num).toDouble() : null) ?? 0;
     final warehouseName = order['warehouseName']?.toString() ??
         supplier['warehouseName']?.toString() ??
         '';
@@ -1408,7 +1408,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
-            '${money((order['total'] as num?) ?? 0)} · ${items.length} item${items.length == 1 ? '' : 's'}'
+            '${money(((order['total']) is num ? (order['total'] as num) : null) ?? 0)} · ${items.length} item${items.length == 1 ? '' : 's'}'
             '${createdAt == null ? '' : ' · ${formatDateTime(createdAt)}'}',
             style: const TextStyle(fontSize: 12, color: AppColors.muted),
           ),
@@ -1419,10 +1419,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
               dense: true,
               title: Text('${raw['quantity']} × ${raw['listingName']}'),
               subtitle: Text(
-                '${money((raw['unitPrice'] as num?) ?? 0)} per ${raw['saleUnit'] ?? 'unit'}',
+                '${money(((raw['unitPrice']) is num ? (raw['unitPrice'] as num) : null) ?? 0)} per ${raw['saleUnit'] ?? 'unit'}',
               ),
               trailing: Text(
-                money((raw['lineTotal'] as num?) ?? 0),
+                money(((raw['lineTotal']) is num ? (raw['lineTotal'] as num) : null) ?? 0),
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
@@ -1476,7 +1476,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
                 const Divider(height: 18),
                 KeyValueRow(
                   label: 'Total',
-                  value: money((order['total'] as num?) ?? 0),
+                  value: money(((order['total']) is num ? (order['total'] as num) : null) ?? 0),
                   bold: true,
                 ),
                 if (!deliveryQuoted)
@@ -1608,14 +1608,14 @@ class _CartEntry {
       supplierName: json['supplierName']?.toString() ?? 'Supplier',
       name: json['name']?.toString() ?? 'Listing',
       saleUnit: json['saleUnit']?.toString() ?? 'unit',
-      price: (json['price'] as num?)?.toDouble() ?? 0,
-      minOrder: (json['minOrder'] as num?)?.toInt() ?? 1,
-      qty: (json['qty'] as num?)?.toInt() ?? 1,
-      weightPerUnitKg: (json['weightPerUnitKg'] as num?)?.toDouble() ?? 0,
-      volumePerUnitM3: (json['volumePerUnitM3'] as num?)?.toDouble() ?? 0,
-      lengthCm: (json['lengthCm'] as num?)?.toDouble() ?? 0,
-      widthCm: (json['widthCm'] as num?)?.toDouble() ?? 0,
-      heightCm: (json['heightCm'] as num?)?.toDouble() ?? 0,
+      price: ((json['price']) is num ? (json['price'] as num).toDouble() : null) ?? 0,
+      minOrder: ((json['minOrder']) is num ? (json['minOrder'] as num) : null)?.toInt() ?? 1,
+      qty: ((json['qty']) is num ? (json['qty'] as num) : null)?.toInt() ?? 1,
+      weightPerUnitKg: ((json['weightPerUnitKg']) is num ? (json['weightPerUnitKg'] as num).toDouble() : null) ?? 0,
+      volumePerUnitM3: ((json['volumePerUnitM3']) is num ? (json['volumePerUnitM3'] as num).toDouble() : null) ?? 0,
+      lengthCm: ((json['lengthCm']) is num ? (json['lengthCm'] as num).toDouble() : null) ?? 0,
+      widthCm: ((json['widthCm']) is num ? (json['widthCm'] as num).toDouble() : null) ?? 0,
+      heightCm: ((json['heightCm']) is num ? (json['heightCm'] as num).toDouble() : null) ?? 0,
     );
   }
 }

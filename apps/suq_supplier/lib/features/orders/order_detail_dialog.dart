@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
@@ -234,6 +236,13 @@ class _OrderDetailDialogState extends ConsumerState<OrderDetailDialog> {
                           ),
                         ],
                       ),
+                    ),
+                    const SizedBox(height: 14),
+                    _OrderMap(
+                      shopLat: order.shop.latitude,
+                      shopLng: order.shop.longitude,
+                      warehouseLat: ref.watch(profileProvider).asData?.value?.latitude,
+                      warehouseLng: ref.watch(profileProvider).asData?.value?.longitude,
                     ),
                     const SizedBox(height: 14),
                     const Text(
@@ -531,6 +540,87 @@ class _ItemRow extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+
+class _OrderMap extends StatelessWidget {
+  const _OrderMap({
+    required this.shopLat,
+    required this.shopLng,
+    required this.warehouseLat,
+    required this.warehouseLng,
+  });
+
+  final double? shopLat;
+  final double? shopLng;
+  final double? warehouseLat;
+  final double? warehouseLng;
+
+  @override
+  Widget build(BuildContext context) {
+    if (shopLat == null || shopLng == null) {
+      return const SectionCard(
+        padding: EdgeInsets.all(14),
+        child: Text('Shop location not shared.'),
+      );
+    }
+    final shop = LatLng(shopLat!, shopLng!);
+    final warehouse = (warehouseLat != null && warehouseLng != null)
+        ? LatLng(warehouseLat!, warehouseLng!)
+        : null;
+    final center = warehouse == null
+        ? shop
+        : LatLng(
+            (shop.latitude + warehouse.latitude) / 2,
+            (shop.longitude + warehouse.longitude) / 2,
+          );
+
+    return SizedBox(
+      height: 220,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: FlutterMap(
+          options: MapOptions(
+            initialCenter: center,
+            initialZoom: 12,
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.suq.supplier',
+            ),
+            if (warehouse != null)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: [warehouse, shop],
+                    strokeWidth: 3,
+                    color: Colors.blue,
+                  ),
+                ],
+              ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: shop,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+                ),
+                if (warehouse != null)
+                  Marker(
+                    point: warehouse,
+                    width: 40,
+                    height: 40,
+                    child: const Icon(Icons.warehouse, color: Colors.blue, size: 32),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

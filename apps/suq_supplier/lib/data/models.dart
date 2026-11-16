@@ -74,8 +74,8 @@ class SupplierProfile {
         warehouseName: asString(json['warehouseName']).isEmpty
             ? 'Merkato'
             : asString(json['warehouseName']),
-        latitude: (json['latitude'] as num?)?.toDouble(),
-        longitude: (json['longitude'] as num?)?.toDouble(),
+        latitude: json['latitude'] is num ? (json['latitude'] as num).toDouble() : null,
+        longitude: json['longitude'] is num ? (json['longitude'] as num).toDouble() : null,
         deliveryBaseFee: asDouble(json['deliveryBaseFee']),
         deliveryPerKm: asDouble(json['deliveryPerKm']),
         deliveryPerKg: asDouble(json['deliveryPerKg']),
@@ -249,12 +249,16 @@ class OrderShop {
     this.phone,
     this.city,
     this.subcity,
+    this.latitude,
+    this.longitude,
   });
 
   final String name;
   final String? phone;
   final String? city;
   final String? subcity;
+  final double? latitude;
+  final double? longitude;
 
   String get location {
     final parts = [city, subcity]
@@ -268,6 +272,8 @@ class OrderShop {
         phone: json['phone'] as String?,
         city: json['city'] as String?,
         subcity: json['subcity'] as String?,
+        latitude: json['latitude'] is num ? (json['latitude'] as num).toDouble() : null,
+        longitude: json['longitude'] is num ? (json['longitude'] as num).toDouble() : null,
       );
 }
 

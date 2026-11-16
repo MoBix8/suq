@@ -1494,14 +1494,7 @@ class _LineLayout {
     // above is only used to decide how much kashida to add; the real paragraph
     // width decides the final few points of spacing.
     final probeRanges = <TextRange>[];
-    final probe = TextPainter(
-      text: TextSpan(children: buildSpans(0, probeRanges)),
-      textDirection: TextDirection.rtl,
-      textAlign: TextAlign.start,
-      textScaler: TextScaler.noScaling,
-      maxLines: 1,
-      textWidthBasis: TextWidthBasis.parent,
-    )..layout();
+    final probe = _layoutLine(buildSpans(0, probeRanges));
     final exactWidth = probe.width;
     probe.dispose();
 
@@ -1511,19 +1504,11 @@ class _LineLayout {
     }
 
     var ranges = <TextRange>[];
-    var painter = TextPainter(
-      text: TextSpan(children: buildSpans(spaceExtra, ranges)),
-      textDirection: TextDirection.rtl,
-      textAlign: TextAlign.start,
-      textScaler: TextScaler.noScaling,
-      maxLines: 1,
-      textWidthBasis: TextWidthBasis.parent,
-    )..layout();
+    var painter = _layoutLine(buildSpans(spaceExtra, ranges));
 
-    // Position the whole line from its measured width instead of constraining
-    // the painter. A constrained single-line painter silently drops the last
-    // words when the line overflows by even a fraction, which would lose
-    // revealed text; an explicit origin can never truncate.
+    // Position the whole line from its measured width. [_layoutLine] sizes the
+    // paragraph from the ceiling of its longest line and never caps the line
+    // count, so no word can be pushed onto a hidden second line.
     // Pages 1-2 stay centred as a block. Every other line is anchored to the
     // left edge (RTL end) so the left margin is a perfectly straight vertical
     // boundary; kashida + word spacing then carry the right edge to the margin
@@ -1540,14 +1525,7 @@ class _LineLayout {
         extra += (width - painter.width) / (words.length - 1);
         painter.dispose();
         final rebuiltRanges = <TextRange>[];
-        final rebuilt = TextPainter(
-          text: TextSpan(children: buildSpans(extra, rebuiltRanges)),
-          textDirection: TextDirection.rtl,
-          textAlign: TextAlign.start,
-          textScaler: TextScaler.noScaling,
-          maxLines: 1,
-          textWidthBasis: TextWidthBasis.parent,
-        )..layout();
+        final rebuilt = _layoutLine(buildSpans(extra, rebuiltRanges));
         ranges.clear();
         ranges.addAll(rebuiltRanges);
         painter = rebuilt;
@@ -1890,6 +1868,36 @@ Rect? _unionBox(TextPainter painter, TextRange range) {
     rect = rect.expandToInclude(boxes[index].toRect());
   }
   return rect;
+}
+
+/// Lays out one printed mushaf line as a single, unwrapped paragraph.
+///
+/// The previous version used `maxLines: 1` with `TextWidthBasis.parent`. After
+/// the first pass Flutter re-lays the paragraph out at its max *intrinsic*
+/// width, and for Arabic with marks, kashida and fractional word spacing that
+/// value can be a fraction of a pixel smaller than the width the shaped text
+/// really needs. The last word then wraps onto a second line, and because
+/// `maxLines` was 1 that second line was never drawn: the word vanished but
+/// its slot stayed empty.
+///
+/// Here the paragraph is sized from `longestLine.ceil()` (always large enough),
+/// is left-aligned so the paint origin is the line's left edge, and has no
+/// line cap, so nothing can ever be silently dropped.
+TextPainter _layoutLine(List<InlineSpan> spans) {
+  final painter = TextPainter(
+    text: TextSpan(children: spans),
+    textDirection: TextDirection.rtl,
+    textAlign: TextAlign.left,
+    textScaler: TextScaler.noScaling,
+    textWidthBasis: TextWidthBasis.longestLine,
+  )..layout();
+  if (kDebugMode && painter.computeLineMetrics().length > 1) {
+    debugPrint(
+      'Mushaf line wrapped onto ${painter.computeLineMetrics().length} lines: '
+      '"${painter.text?.toPlainText()}"',
+    );
+  }
+  return painter;
 }
 
 /// Width of [text] rendered with [style].

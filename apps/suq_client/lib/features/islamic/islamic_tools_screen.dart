@@ -192,8 +192,28 @@ class _IslamicToolsScreenState extends ConsumerState<IslamicToolsScreen> {
                         label: 'Prayer times',
                       ),
                       _UpcomingTool(
+                        icon: Icons.menu_book_rounded,
+                        label: 'Hadith',
+                      ),
+                      _UpcomingTool(
+                        icon: Icons.auto_awesome_rounded,
+                        label: '99 Names',
+                      ),
+                      _UpcomingTool(
+                        icon: Icons.auto_stories_rounded,
+                        label: 'Stories',
+                      ),
+                      _UpcomingTool(
+                        icon: Icons.calculate_rounded,
+                        label: 'Zakat',
+                      ),
+                      _UpcomingTool(
+                        icon: Icons.shield_rounded,
+                        label: 'Hisnul Muslim',
+                      ),
+                      _UpcomingTool(
                         icon: Icons.volunteer_activism_outlined,
-                        label: 'Du‘as',
+                        label: 'Du\u2018as',
                       ),
                     ],
                   ),

@@ -4,6 +4,7 @@ import { requireAuth, requireSupplier } from "../auth";
 import { asyncHandler } from "../errors";
 import { slugify } from "../lib/phone";
 import { prisma } from "../prisma";
+import { pageParams, pageMeta } from "../lib/pagination";
 
 export const supplierRouter = Router();
 supplierRouter.use(requireAuth, (req, _res, next) => {
@@ -202,16 +203,22 @@ supplierRouter.patch("/listings/:id", asyncHandler(async (req, res) => {
 
 supplierRouter.get("/orders", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
-  const orders = await prisma.shopOrder.findMany({
-    where: { supplierId },
-    include: {
-      shop: { select: { id: true, name: true, city: true, subcity: true, phone: true, latitude: true, longitude: true } },
-      acceptedBy: { select: { id: true, name: true, phone: true } },
-      items: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json({ orders });
+  const paging = pageParams(req.query as Record<string, unknown>, 20, 100);
+  const [total, orders] = await Promise.all([
+    prisma.shopOrder.count({ where: { supplierId } }),
+    prisma.shopOrder.findMany({
+      where: { supplierId },
+      include: {
+        shop: { select: { id: true, name: true, city: true, subcity: true, phone: true, latitude: true, longitude: true } },
+        acceptedBy: { select: { id: true, name: true, phone: true } },
+        items: true,
+      },
+      orderBy: { createdAt: "desc" },
+      skip: paging.skip,
+      take: paging.take,
+    }),
+  ]);
+  res.json({ orders, ...pageMeta(total, paging) });
 }));
 
 supplierRouter.patch("/orders/:id/status", asyncHandler(async (req, res) => {
