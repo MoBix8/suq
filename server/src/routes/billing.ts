@@ -10,6 +10,7 @@ import {
   toSubscriptionDto,
 } from "../lib/subscription";
 import { prisma } from "../prisma";
+import { pageMeta, pageParams } from "../lib/pagination";
 import { env } from "../env";
 
 export const billingRouter = Router();
@@ -75,13 +76,19 @@ billingRouter.get(
   "/payments/mine",
   asyncHandler(async (req, res) => {
     const { shopId } = requireShop(req);
-    const payments = await prisma.payment.findMany({
-      where: { shopId },
-      orderBy: { submittedAt: "desc" },
-      take: 30,
-      include: { package: true, bankAccount: true },
-    });
-    res.json({ payments });
+    const paging = pageParams(req.query as Record<string, unknown>, 10, 50);
+    const where = { shopId };
+    const [total, payments] = await Promise.all([
+      prisma.payment.count({ where }),
+      prisma.payment.findMany({
+        where,
+        orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+        skip: paging.skip,
+        take: paging.take,
+        include: { package: true, bankAccount: true },
+      }),
+    ]);
+    res.json({ payments, ...pageMeta(total, paging) });
   }),
 );
 

@@ -18,17 +18,25 @@ class LibraryRepository {
 
   Future<List<LibraryCategory>> categories() async {
     try {
-      final response = await _api.get(
-        '/library/categories',
-        query: {'page': 1, 'pageSize': 200},
-      );
-      final list = response['categories'] as List<dynamic>? ?? [];
-      final categories = list
-          .whereType<Map>()
-          .map((item) => LibraryCategory.fromJson(Map<String, dynamic>.from(item)))
-          .toList();
-      await _cacheCategories(categories);
-      return categories;
+      final all = <LibraryCategory>[];
+      var page = 1;
+      while (true) {
+        final response = await _api.get(
+          '/library/categories',
+          query: {'page': page, 'pageSize': 10},
+        );
+        final list = response['categories'] as List<dynamic>? ?? [];
+        final categories = list
+            .whereType<Map>()
+            .map((item) => LibraryCategory.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
+        all.addAll(categories);
+        final total = asInt(response['total']);
+        if (categories.isEmpty || all.length >= total) break;
+        page += 1;
+      }
+      await _cacheCategories(all);
+      return all;
     } catch (error) {
       if (_isAuthError(error)) rethrow;
       final cached = await _readCategories();
@@ -41,7 +49,7 @@ class LibraryRepository {
     String? categoryId,
     String? search,
     int page = 1,
-    int pageSize = 50,
+    int pageSize = 10,
   }) async {
     try {
       final response = await _api.get(
@@ -85,7 +93,7 @@ class LibraryRepository {
     String? categoryId,
     String? search,
   }) async {
-    const pageSize = 200;
+    const pageSize = 10;
     try {
       final all = <LibraryProduct>[];
       var page = 1;

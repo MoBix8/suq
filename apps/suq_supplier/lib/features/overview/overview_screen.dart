@@ -24,48 +24,37 @@ class OverviewScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final orders = ref.watch(ordersProvider);
-    final listings = ref.watch(listingsProvider);
-    final products = ref.watch(productsProvider);
+    final summaryAsync = ref.watch(summaryProvider);
+    final recentOrders = ref.watch(recentOrdersProvider);
     final profile = ref.watch(profileProvider);
 
-    final error = orders.error ?? listings.error ?? products.error ?? profile.error;
+    final error =
+        summaryAsync.error ?? recentOrders.error ?? profile.error;
     if (error != null) {
       return ErrorView(
         message: error.toString(),
         onRetry: () {
-          ref.invalidate(ordersProvider);
-          ref.invalidate(listingsProvider);
-          ref.invalidate(productsProvider);
+          ref.invalidate(summaryProvider);
+          ref.invalidate(recentOrdersProvider);
           ref.invalidate(profileProvider);
         },
       );
     }
 
-    final orderList = orders.asData?.value;
-    final listingList = listings.asData?.value;
-    final productList = products.asData?.value;
+    final summary = summaryAsync.asData?.value;
+    final orderList = recentOrders.asData?.value;
     final supplier = profile.asData?.value;
 
-    if (orderList == null ||
-        listingList == null ||
-        productList == null ||
-        supplier == null) {
+    if (summary == null || orderList == null || supplier == null) {
       return const LoadingView(message: 'Loading your workspace…');
     }
 
-    // The catalog tab shows the shared library; the overview still reports only
-    // the products this supplier owns.
-    final ownProducts =
-        productList.where((product) => product.supplierId == supplier.id).toList();
-
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(ordersProvider);
-        ref.invalidate(listingsProvider);
-        ref.invalidate(productsProvider);
+        ref.invalidate(summaryProvider);
+        ref.invalidate(recentOrdersProvider);
         ref.invalidate(profileProvider);
-        await ref.read(ordersProvider.future);
+        await ref.read(summaryProvider.future);
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -79,19 +68,13 @@ class OverviewScreen extends ConsumerWidget {
                 children: [
                   _HeroCard(
                     supplier: supplier,
-                    pendingOrders:
-                        orderList.where((order) => order.isPending).length,
-                    activeListings:
-                        listingList.where((listing) => listing.active).length,
-                    productCount: ownProducts.length,
+                    pendingOrders: summary.pendingOrderCount,
+                    activeListings: summary.activeListingCount,
+                    productCount: summary.productCount,
                     onOpenOrders: onOpenOrders,
                   ),
                   const SizedBox(height: 18),
-                  _StatsGrid(
-                    orders: orderList,
-                    listings: listingList,
-                    products: ownProducts,
-                  ),
+                  _StatsGrid(summary: summary),
                   const SizedBox(height: 18),
                   LayoutBuilder(
                     builder: (context, constraints) {
@@ -316,47 +299,38 @@ class _HeroPill extends StatelessWidget {
 }
 
 class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({
-    required this.orders,
-    required this.listings,
-    required this.products,
-  });
+  const _StatsGrid({required this.summary});
 
-  final List<SupplierOrder> orders;
-  final List<SupplierListing> listings;
-  final List<SupplierProduct> products;
+  final SupplierSummary summary;
 
   @override
   Widget build(BuildContext context) {
-    final pending = orders.where((order) => order.isPending).length;
-    final activeListings = listings.where((listing) => listing.active).length;
-    final delivered = orders.where((order) => order.status == 'DELIVERED').length;
-
     final cards = [
       StatCard(
         label: 'Orders to review',
-        value: '$pending',
+        value: '${summary.pendingOrderCount}',
         icon: Icons.hourglass_top_rounded,
         color: SupplierColors.warning,
         subtitle: 'Waiting for a delivery quote',
       ),
       StatCard(
         label: 'Active listings',
-        value: '$activeListings',
+        value: '${summary.activeListingCount}',
         icon: Icons.sell_rounded,
         color: SupplierColors.seed,
-        subtitle: '${listings.length} listing${listings.length == 1 ? '' : 's'} in total',
+        subtitle:
+            '${summary.listingCount} listing${summary.listingCount == 1 ? '' : 's'} in total',
       ),
       StatCard(
         label: 'Catalog products',
-        value: '${products.length}',
+        value: '${summary.productCount}',
         icon: Icons.inventory_2_rounded,
         color: SupplierColors.bright,
-        subtitle: 'Retail products for shop libraries',
+        subtitle: 'Retail products you shared with shop libraries',
       ),
       StatCard(
         label: 'Delivered orders',
-        value: '$delivered',
+        value: '${summary.deliveredOrderCount}',
         icon: Icons.local_shipping_rounded,
         color: SupplierColors.success,
         subtitle: 'Completed all time',

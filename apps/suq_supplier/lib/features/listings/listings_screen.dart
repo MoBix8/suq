@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,12 +21,20 @@ class ListingsScreen extends ConsumerStatefulWidget {
 
 class _ListingsScreenState extends ConsumerState<ListingsScreen>
     with WidgetsBindingObserver {
+  static const _pageSize = 10;
+
   String _filter = 'all';
+  List<SupplierListing> _listings = const [];
+  int _page = 1;
+  int _total = 0;
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _load();
   }
 
   @override
@@ -35,7 +45,50 @@ class _ListingsScreenState extends ConsumerState<ListingsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) ref.invalidate(listingsProvider);
+    if (state == AppLifecycleState.resumed) _load();
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      if (_listings.isEmpty) _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await ref.read(apiProvider).get(
+            '/supplier/listings',
+            query: {
+              'page': '$_page',
+              'pageSize': '$_pageSize',
+              if (_filter == 'active') 'active': 'true',
+              if (_filter == 'hidden') 'active': 'false',
+            },
+          );
+      if (!mounted) return;
+      final listings = (response['listings'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => SupplierListing.fromJson(asMap(row)))
+          .toList();
+      setState(() {
+        _listings = listings;
+        _total = asInt(response['total']);
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error is ApiException ? error.message : error.toString();
+      });
+    }
+  }
+
+  void _selectFilter(String filter) {
+    setState(() {
+      _filter = filter;
+      _page = 1;
+    });
+    _load();
   }
 
   Future<void> _openEditor({SupplierListing? listing}) async {
@@ -47,14 +100,18 @@ class _ListingsScreenState extends ConsumerState<ListingsScreen>
 
     try {
       final api = ref.read(apiProvider);
-      final response = listing == null
-          ? await api.post('/supplier/listings', body: draft.toJson())
-          : await api.patch(
-              '/supplier/listings/${listing.id}',
-              body: draft.toJson(),
-            );
-      _rememberSavedListing(response);
-      ref.invalidate(listingsProvider);
+      if (listing == null) {
+        await api.post('/supplier/listings', body: draft.toJson());
+      } else {
+        await api.patch(
+          '/supplier/listings/${listing.id}',
+          body: draft.toJson(),
+        );
+      }
+      ref.invalidate(summaryProvider);
+      if (!mounted) return;
+      setState(() => _page = 1);
+      await _load();
       if (mounted) {
         showAppSnack(
           context,
@@ -72,12 +129,13 @@ class _ListingsScreenState extends ConsumerState<ListingsScreen>
 
   Future<void> _setActive(SupplierListing listing, bool active) async {
     try {
-      final response = await ref.read(apiProvider).patch(
+      await ref.read(apiProvider).patch(
         '/supplier/listings/${listing.id}',
         body: {'active': active},
       );
-      _rememberSavedListing(response);
-      ref.invalidate(listingsProvider);
+      ref.invalidate(summaryProvider);
+      if (!mounted) return;
+      await _load();
       if (mounted) {
         showAppSnack(
           context,
@@ -89,14 +147,6 @@ class _ListingsScreenState extends ConsumerState<ListingsScreen>
     } catch (error) {
       if (mounted) await _showSaveError(error, editing: true);
     }
-  }
-
-  void _rememberSavedListing(Map<String, dynamic> response) {
-    final saved = response['listing'];
-    if (saved is! Map) return;
-    final listing = SupplierListing.fromJson(asMap(saved));
-    if (listing.id.isEmpty) return;
-    ref.read(recentlyPublishedListingProvider.notifier).remember(listing);
   }
 
   Future<void> _showSaveError(Object error, {required bool editing}) async {
@@ -118,135 +168,159 @@ class _ListingsScreenState extends ConsumerState<ListingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final listingsAsync = ref.watch(listingsProvider);
-    final recent = ref.watch(recentlyPublishedListingProvider);
+    final summary = ref.watch(summaryProvider).asData?.value;
 
-    return AsyncValueView<List<SupplierListing>>(
-      value: listingsAsync,
-      onRetry: () => ref.invalidate(listingsProvider),
-      loadingMessage: 'Loading listings…',
-      builder: (listings) {
-        final recentListing = recent;
-        final allListings = recentListing == null
-            ? listings
-            : <SupplierListing>[
-                recentListing,
-                ...listings.where(
-                  (listing) => listing.id != recentListing.id,
-                ),
-              ];
-        final filtered = switch (_filter) {
-          'active' => allListings.where((listing) => listing.active).toList(),
-          'hidden' =>
-            allListings.where((listing) => !listing.active).toList(),
-          _ => allListings,
-        };
-
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(listingsProvider);
-            await ref.read(listingsProvider.future);
-          },
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1000),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      PageHeader(
-                        title: 'Bulk listings',
-                        subtitle:
-                            '${allListings.where((l) => l.active).length} visible · ${allListings.length} total',
-                        action: FilledButton.icon(
-                          onPressed: () => _openEditor(),
-                          icon: const Icon(Icons.add_rounded, size: 19),
-                          label: const Text('Publish listing'),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      const InfoBanner(
-                        icon: Icons.storefront_outlined,
-                        message:
-                            'Listings are independent wholesale offers. The catalog tab is the same retail product library shops browse in the client app; it is not linked to listings.',
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 38,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            for (final option in const [
-                              ('all', 'All listings'),
-                              ('active', 'Visible'),
-                              ('hidden', 'Hidden'),
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(option.$2),
-                                  selected: _filter == option.$1,
-                                  onSelected: (_) =>
-                                      setState(() => _filter = option.$1),
-                                ),
-                              ),
-                            SizedBox(
-                              width: 34,
-                              height: 34,
-                              child: IconButton(
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.compact,
-                                tooltip: 'Refresh listings',
-                                onPressed: () =>
-                                    ref.invalidate(listingsProvider),
-                                icon: const Icon(
-                                  Icons.refresh_rounded,
-                                  size: 19,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (filtered.isEmpty)
-                        EmptyState(
-                          icon: Icons.sell_outlined,
-                          title: allListings.isEmpty
-                              ? 'No listings yet'
-                              : 'Nothing in this filter',
-                          message: allListings.isEmpty
-                              ? 'Publish your first wholesale listing so shops can order from you.'
-                              : 'Try a different filter.',
-                          action: allListings.isEmpty
-                              ? FilledButton.icon(
-                                  onPressed: () => _openEditor(),
-                                  icon: const Icon(Icons.add_rounded, size: 18),
-                                  label: const Text('Publish a listing'),
-                                )
-                              : null,
-                        )
-                      else
-                        for (final listing in filtered) ...[
-                          _ListingCard(
-                            listing: listing,
-                            onEdit: () => _openEditor(listing: listing),
-                            onActiveChanged: (value) =>
-                                _setActive(listing, value),
-                          ),
-                          const SizedBox(height: 10),
-                        ],
-                    ],
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1000),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PageHeader(
+                    title: 'Bulk listings',
+                    subtitle: summary == null
+                        ? '$_total total'
+                        : '${summary.activeListingCount} visible · ${summary.listingCount} total',
+                    action: FilledButton.icon(
+                      onPressed: () => _openEditor(),
+                      icon: const Icon(Icons.add_rounded, size: 19),
+                      label: const Text('Publish listing'),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 14),
+                  const InfoBanner(
+                    icon: Icons.storefront_outlined,
+                    message:
+                        'Listings are independent wholesale offers. The catalog tab is the same retail product library shops browse in the client app; it is not linked to listings.',
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 38,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        for (final option in const [
+                          ('all', 'All listings'),
+                          ('active', 'Visible'),
+                          ('hidden', 'Hidden'),
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(option.$2),
+                              selected: _filter == option.$1,
+                              onSelected: (_) => _selectFilter(option.$1),
+                            ),
+                          ),
+                        SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Refresh listings',
+                            onPressed: _load,
+                            icon: const Icon(
+                              Icons.refresh_rounded,
+                              size: 19,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_error != null) ...[
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: SupplierColors.danger),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_loading && _listings.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_listings.isEmpty)
+                    EmptyState(
+                      icon: Icons.sell_outlined,
+                      title: _total == 0
+                          ? (_filter == 'all'
+                              ? 'No listings yet'
+                              : 'Nothing in this filter')
+                          : 'Nothing in this filter',
+                      message: _total == 0
+                          ? 'Publish your first wholesale listing so shops can order from you.'
+                          : 'Try a different filter.',
+                      action: _total == 0 && _filter == 'all'
+                          ? FilledButton.icon(
+                              onPressed: () => _openEditor(),
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Publish a listing'),
+                            )
+                          : null,
+                    )
+                  else ...[
+                    for (final listing in _listings) ...[
+                      _ListingCard(
+                        listing: listing,
+                        onEdit: () => _openEditor(listing: listing),
+                        onActiveChanged: (value) => _setActive(listing, value),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    _pagination(),
+                  ],
+                ],
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  Widget _pagination() {
+    final start = (_page - 1) * _pageSize + 1;
+    final end = math.min(_page * _pageSize, _total);
+    final pages = math.max(1, (_total / _pageSize).ceil());
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Previous page',
+          onPressed: _page > 1
+              ? () {
+                  setState(() => _page -= 1);
+                  _load();
+                }
+              : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+        ),
+        Expanded(
+          child: Text(
+            '$start–$end of $_total · page $_page of $pages',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: SupplierColors.muted),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Next page',
+          onPressed: _page < pages
+              ? () {
+                  setState(() => _page += 1);
+                  _load();
+                }
+              : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+        ),
+      ],
     );
   }
 }

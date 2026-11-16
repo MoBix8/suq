@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -236,7 +238,7 @@ class _ActivationScreenState extends ConsumerState<ActivationScreen> {
                       onSubmit: _submitPayment,
                     ),
                     const SizedBox(height: 18),
-                    _PaymentHistory(onRefresh: _refreshAll),
+                    const _PaymentHistory(),
                     const SizedBox(height: 26),
                     const Text(
                       'Subscription dates are controlled by the SUQ server. '
@@ -651,79 +653,187 @@ class _PaymentForm extends StatelessWidget {
   }
 }
 
-class _PaymentHistory extends ConsumerWidget {
-  const _PaymentHistory({required this.onRefresh});
-
-  final Future<void> Function() onRefresh;
+class _PaymentHistory extends ConsumerStatefulWidget {
+  const _PaymentHistory();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final payments = ref.watch(paymentsProvider);
-    return AsyncValueView<List<PaymentRecord>>(
-      value: payments,
-      onRetry: () => ref.invalidate(paymentsProvider),
-      builder: (records) {
-        if (records.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _SectionTitle(
-              title: 'Your payments',
-              subtitle: 'The admin reviews these manually.',
-            ),
-            const SizedBox(height: 12),
-            SectionCard(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                children: records.map((record) {
-                  final color = record.approved
-                      ? AppColors.profit
-                      : record.pending
-                          ? AppColors.warning
-                          : AppColors.loss;
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(
-                      record.approved
-                          ? Icons.check_circle_rounded
-                          : record.pending
-                              ? Icons.schedule_rounded
-                              : Icons.cancel_rounded,
-                      color: color,
+  ConsumerState<_PaymentHistory> createState() => _PaymentHistoryState();
+}
+
+class _PaymentHistoryState extends ConsumerState<_PaymentHistory> {
+  static const _pageSize = 10;
+
+  List<PaymentRecord> _records = const [];
+  int _page = 1;
+  int _total = 0;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      if (_records.isEmpty) _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await ref.read(apiProvider).get(
+            '/payments/mine',
+            query: {'page': '$_page', 'pageSize': '$_pageSize'},
+          );
+      if (!mounted) return;
+      final records = (response['payments'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => PaymentRecord.fromJson(Map<String, dynamic>.from(row)))
+          .toList();
+      setState(() {
+        _records = records;
+        _total = asInt(response['total']);
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error is ApiException ? error.message : error.toString();
+      });
+    }
+  }
+
+  void _goToPage(int page) {
+    setState(() => _page = page);
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Refreshing the activation screen invalidates paymentsProvider; reset the
+    // history to its first server page when that happens. The initial load is
+    // handled by initState, so only react once the provider already had data.
+    ref.listen<AsyncValue<List<PaymentRecord>>>(paymentsProvider, (previous, next) {
+      final nextRecords = next.asData?.value;
+      final previousRecords = previous?.asData?.value;
+      if (nextRecords == null || previousRecords == null) return;
+      if (previousRecords == nextRecords) return;
+      setState(() => _page = 1);
+      _load();
+    });
+
+    if (_loading && _records.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    if (_error != null && _records.isEmpty) {
+      return Text(
+        _error!,
+        style: const TextStyle(color: AppColors.loss, fontSize: 12.5),
+      );
+    }
+    if (_records.isEmpty) return const SizedBox.shrink();
+
+    final pages = math.max(1, (_total / _pageSize).ceil());
+    final start = (_page - 1) * _pageSize + 1;
+    final end = math.min(_page * _pageSize, _total);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle(
+          title: 'Your payments',
+          subtitle: 'The admin reviews these manually.',
+        ),
+        const SizedBox(height: 12),
+        SectionCard(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            children: [
+              for (final record in _records) _PaymentTile(record: record),
+              if (_total > _pageSize)
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Previous page',
+                      onPressed: _page > 1 ? () => _goToPage(_page - 1) : null,
+                      icon: const Icon(Icons.chevron_left_rounded),
                     ),
-                    title: Text(
-                      record.packageName ?? 'Package',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      '${record.transactionRef} • ${formatDateTime(record.submittedAt)}',
-                      style: const TextStyle(fontSize: 11.5),
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        StatusChip(
-                          label: record.status,
-                          color: color,
+                    Expanded(
+                      child: Text(
+                        '$start–$end of $_total · page $_page of $pages',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.muted,
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          money(record.amountEtb),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  );
-                }).toList(),
-              ),
+                    IconButton(
+                      tooltip: 'Next page',
+                      onPressed:
+                          _page < pages ? () => _goToPage(_page + 1) : null,
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentTile extends StatelessWidget {
+  const _PaymentTile({required this.record});
+
+  final PaymentRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = record.approved
+        ? AppColors.profit
+        : record.pending
+            ? AppColors.warning
+            : AppColors.loss;
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        record.approved
+            ? Icons.check_circle_rounded
+            : record.pending
+                ? Icons.schedule_rounded
+                : Icons.cancel_rounded,
+        color: color,
+      ),
+      title: Text(
+        record.packageName ?? 'Package',
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        '${record.transactionRef} • ${formatDateTime(record.submittedAt)}',
+        style: const TextStyle(fontSize: 11.5),
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          StatusChip(
+            label: record.status,
+            color: color,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            money(record.amountEtb),
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
             ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 }

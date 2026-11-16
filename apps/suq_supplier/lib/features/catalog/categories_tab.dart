@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +17,50 @@ class CategoriesTab extends ConsumerStatefulWidget {
 }
 
 class _CategoriesTabState extends ConsumerState<CategoriesTab> {
+  static const _pageSize = 10;
+
+  List<SupplierCategory> _categories = const [];
+  int _page = 1;
+  int _total = 0;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      if (_categories.isEmpty) _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await ref.read(apiProvider).get(
+            '/supplier/categories',
+            query: {'page': '$_page', 'pageSize': '$_pageSize'},
+          );
+      if (!mounted) return;
+      final categories = (response['categories'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => SupplierCategory.fromJson(asMap(row)))
+          .toList();
+      setState(() {
+        _categories = categories;
+        _total = asInt(response['total']);
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error is ApiException ? error.message : error.toString();
+      });
+    }
+  }
+
   Future<void> _openEditor({SupplierCategory? category}) async {
     final name = await showDialog<String>(
       context: context,
@@ -32,8 +78,10 @@ class _CategoriesTabState extends ConsumerState<CategoriesTab> {
           body: {'name': name},
         );
       }
-      ref.invalidate(categoriesProvider);
-      ref.invalidate(productsProvider);
+      ref.invalidate(summaryProvider);
+      if (!mounted) return;
+      setState(() => _page = 1);
+      await _load();
       if (mounted) {
         showAppSnack(
           context,
@@ -61,7 +109,10 @@ class _CategoriesTabState extends ConsumerState<CategoriesTab> {
 
     try {
       await ref.read(apiProvider).delete('/supplier/categories/${category.id}');
-      ref.invalidate(categoriesProvider);
+      ref.invalidate(summaryProvider);
+      if (!mounted) return;
+      if (_categories.length == 1 && _page > 1) _page -= 1;
+      await _load();
       if (mounted) showAppSnack(context, 'Category deleted.');
     } on ApiException catch (error) {
       if (mounted) showAppSnack(context, error.message, error: true);
@@ -72,68 +123,110 @@ class _CategoriesTabState extends ConsumerState<CategoriesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final categoriesAsync = ref.watch(categoriesProvider);
     final supplierId = ref.watch(sessionProvider).supplier?.id ?? '';
 
-    return AsyncValueView<List<SupplierCategory>>(
-      value: categoriesAsync,
-      onRetry: () => ref.invalidate(categoriesProvider),
-      loadingMessage: 'Loading categories…',
-      builder: (categories) => RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(categoriesProvider);
-          await ref.read(categoriesProvider.future);
-        },
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1000),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    PageHeader(
-                      title: 'Categories',
-                      subtitle:
-                          '${categories.length} categor${categories.length == 1 ? 'y' : 'ies'} in the shared product library.',
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1000),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PageHeader(
+                    title: 'Categories',
+                    subtitle:
+                        '$_total categor${_total == 1 ? 'y' : 'ies'} in the shared product library.',
+                    action: FilledButton.icon(
+                      onPressed: () => _openEditor(),
+                      icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                      label: const Text('New category'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_error != null) ...[
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: SupplierColors.danger),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_loading && _categories.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_categories.isEmpty)
+                    EmptyState(
+                      icon: Icons.category_outlined,
+                      title: 'No categories yet',
+                      message:
+                          'Create categories to keep your products organised.',
                       action: FilledButton.icon(
                         onPressed: () => _openEditor(),
-                        icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                        label: const Text('New category'),
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Create a category'),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    if (categories.isEmpty)
-                      EmptyState(
-                        icon: Icons.category_outlined,
-                        title: 'No categories yet',
-                        message:
-                            'Create categories to keep your products organised.',
-                        action: FilledButton.icon(
-                          onPressed: () => _openEditor(),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('Create a category'),
-                        ),
-                      )
-                    else
-                      for (final category in categories) ...[
-                        _CategoryCard(
-                          category: category,
-                          owned: category.supplierId == supplierId,
-                          onEdit: () => _openEditor(category: category),
-                          onDelete: () => _delete(category),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
+                    )
+                  else ...[
+                    for (final category in _categories) ...[
+                      _CategoryCard(
+                        category: category,
+                        owned: category.supplierId == supplierId,
+                        onEdit: () => _openEditor(category: category),
+                        onDelete: () => _delete(category),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    _pagination(),
                   ],
-                ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _pagination() {
+    final start = (_page - 1) * _pageSize + 1;
+    final end = math.min(_page * _pageSize, _total);
+    final pages = math.max(1, (_total / _pageSize).ceil());
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Previous page',
+          onPressed: _page > 1
+              ? () {
+                  setState(() => _page -= 1);
+                  _load();
+                }
+              : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+        ),
+        Expanded(
+          child: Text(
+            '$start–$end of $_total · page $_page of $pages',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: SupplierColors.muted),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Next page',
+          onPressed: _page < pages
+              ? () {
+                  setState(() => _page += 1);
+                  _load();
+                }
+              : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+        ),
+      ],
     );
   }
 }

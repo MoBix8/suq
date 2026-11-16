@@ -57,7 +57,8 @@ class _OrderDetailDialogState extends ConsumerState<OrderDetailDialog> {
         body: {'deliveryFee': fee},
       );
       if (!mounted) return;
-      ref.invalidate(ordersProvider);
+      ref.invalidate(summaryProvider);
+      ref.invalidate(recentOrdersProvider);
       setState(() {
         _deliveryFee = fee;
         _quoted = true;
@@ -92,7 +93,8 @@ class _OrderDetailDialogState extends ConsumerState<OrderDetailDialog> {
         body: {'status': status},
       );
       if (!mounted) return;
-      ref.invalidate(ordersProvider);
+      ref.invalidate(summaryProvider);
+      ref.invalidate(recentOrdersProvider);
       setState(() => _status = status);
       showAppSnack(context, 'Order moved to ${orderStatusLabel(status)}.');
     } on ApiException catch (error) {

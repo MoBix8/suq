@@ -16,14 +16,18 @@ catalogRouter.use("/library", requireAuth, requireBoundDevice, (req, _res, next)
 catalogRouter.get(
   "/library/categories",
   asyncHandler(async (req, res) => {
-    const paging = pageParams(req.query as Record<string, unknown>, 100, 200);
+    const paging = pageParams(req.query as Record<string, unknown>, 10, 50);
     const [total, categories] = await Promise.all([
       prisma.category.count({ where: { products: { some: { active: true } } } }),
       prisma.category.findMany({
         where: { products: { some: { active: true } } },
         skip: paging.skip,
         take: paging.take,
-        orderBy: { sortOrder: "asc" },
+        orderBy: [
+          { sortOrder: "asc" },
+          { name: "asc" },
+          { id: "asc" },
+        ],
         include: {
           _count: {
             select: {
@@ -58,7 +62,7 @@ catalogRouter.get(
   "/library/products",
   asyncHandler(async (req, res) => {
     const query = productQuerySchema.parse(req.query);
-    const paging = pageParams(req.query as Record<string, unknown>, 50, 500);
+    const paging = pageParams(req.query as Record<string, unknown>, 10, 100);
     const where: Prisma.ProductLibraryItemWhereInput = {
       active: true,
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
@@ -78,7 +82,11 @@ catalogRouter.get(
       prisma.productLibraryItem.count({ where }),
       prisma.productLibraryItem.findMany({
         where,
-        orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
+        orderBy: [
+          { category: { sortOrder: "asc" } },
+          { name: "asc" },
+          { id: "asc" },
+        ],
         include: { category: { select: { id: true, name: true } } },
         skip: paging.skip,
         take: paging.take,

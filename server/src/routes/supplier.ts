@@ -1,7 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireSupplier } from "../auth";
 import { asyncHandler } from "../errors";
+import { dateRange } from "../lib/dateRange";
 import { slugify } from "../lib/phone";
 import { prisma } from "../prisma";
 import { pageParams, pageMeta } from "../lib/pagination";
@@ -43,18 +45,59 @@ supplierRouter.patch("/profile", asyncHandler(async (req, res) => {
   res.json({ supplier });
 }));
 
+supplierRouter.get("/summary", asyncHandler(async (req, res) => {
+  const { supplierId } = requireSupplier(req);
+  const [
+    orderCount,
+    pendingOrderCount,
+    deliveredOrderCount,
+    listingCount,
+    activeListingCount,
+    productCount,
+    categoryCount,
+  ] = await Promise.all([
+    prisma.shopOrder.count({ where: { supplierId } }),
+    prisma.shopOrder.count({ where: { supplierId, status: "PENDING" } }),
+    prisma.shopOrder.count({ where: { supplierId, status: "DELIVERED" } }),
+    prisma.supplierListing.count({ where: { supplierId } }),
+    prisma.supplierListing.count({ where: { supplierId, active: true } }),
+    prisma.productLibraryItem.count({ where: { supplierId, active: true } }),
+    prisma.category.count({ where: { supplierId } }),
+  ]);
+  res.json({
+    summary: {
+      orderCount,
+      pendingOrderCount,
+      deliveredOrderCount,
+      listingCount,
+      activeListingCount,
+      productCount,
+      categoryCount,
+    },
+  });
+}));
+
 supplierRouter.get("/categories", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
+  const paging = pageParams(req.query as Record<string, unknown>, 10, 100);
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   // Mirror the client's SUQ library: every category that has active products,
   // plus the supplier's own (possibly empty) categories so they can add to them.
-  const categories = await prisma.category.findMany({
-    where: {
-      OR: [{ products: { some: { active: true } } }, { supplierId }],
-    },
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: { _count: { select: { products: { where: { active: true } } } } },
-  });
-  res.json({ categories });
+  const where: Prisma.CategoryWhereInput = {
+    OR: [{ products: { some: { active: true } } }, { supplierId }],
+    ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
+  };
+  const [total, categories] = await Promise.all([
+    prisma.category.count({ where }),
+    prisma.category.findMany({
+      where,
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
+      include: { _count: { select: { products: { where: { active: true } } } } },
+      skip: paging.skip,
+      take: paging.take,
+    }),
+  ]);
+  res.json({ categories, ...pageMeta(total, paging) });
 }));
 
 supplierRouter.post("/categories", asyncHandler(async (req, res) => {
@@ -99,15 +142,38 @@ const productInput = z.object({
 
 supplierRouter.get("/products", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
+  const paging = pageParams(req.query as Record<string, unknown>, 10, 100);
+  const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId.trim() : "";
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   // Same feed shops see in the client's SUQ library: every active product from
   // the shared library (SUQ and all suppliers), plus the supplier's own rows so
   // they can still manage anything they created.
-  const products = await prisma.productLibraryItem.findMany({
-    where: { OR: [{ active: true }, { supplierId }] },
-    include: { category: true },
-    orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
-  });
-  res.json({ products });
+  const filters: Prisma.ProductLibraryItemWhereInput[] = [
+    { OR: [{ active: true }, { supplierId }] },
+  ];
+  if (categoryId) filters.push({ categoryId });
+  if (q) {
+    filters.push({
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { sku: { contains: q, mode: "insensitive" } },
+        { nameAm: { contains: q, mode: "insensitive" } },
+        { nameOr: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+  const where: Prisma.ProductLibraryItemWhereInput = { AND: filters };
+  const [total, products] = await Promise.all([
+    prisma.productLibraryItem.count({ where }),
+    prisma.productLibraryItem.findMany({
+      where,
+      include: { category: true },
+      orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }, { id: "asc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+  ]);
+  res.json({ products, ...pageMeta(total, paging) });
 }));
 
 supplierRouter.post("/products", asyncHandler(async (req, res) => {
@@ -153,12 +219,34 @@ function volumePerUnit(lengthCm: number, widthCm: number, heightCm: number): num
 
 supplierRouter.get("/listings", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
-  const listings = await prisma.supplierListing.findMany({
-    where: { supplierId },
-    include: { publishedBy: { select: { id: true, name: true, phone: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json({ listings });
+  const paging = pageParams(req.query as Record<string, unknown>, 10, 100);
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const activeParam = req.query.active;
+  const active =
+    activeParam === "true" ? true : activeParam === "false" ? false : undefined;
+  const where: Prisma.SupplierListingWhereInput = {
+    supplierId,
+    ...(active === undefined ? {} : { active }),
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { category: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+  const [total, listings] = await Promise.all([
+    prisma.supplierListing.count({ where }),
+    prisma.supplierListing.findMany({
+      where,
+      include: { publishedBy: { select: { id: true, name: true, phone: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+  ]);
+  res.json({ listings, ...pageMeta(total, paging) });
 }));
 
 supplierRouter.post("/listings", asyncHandler(async (req, res) => {
@@ -203,17 +291,31 @@ supplierRouter.patch("/listings/:id", asyncHandler(async (req, res) => {
 
 supplierRouter.get("/orders", asyncHandler(async (req, res) => {
   const { supplierId } = requireSupplier(req);
-  const paging = pageParams(req.query as Record<string, unknown>, 20, 100);
+  const paging = pageParams(req.query as Record<string, unknown>, 10, 100);
+  const statusParam = req.query.status;
+  const status =
+    typeof statusParam === "string" && statusParam && statusParam !== "ALL"
+      ? statusParam
+      : undefined;
+  // Incoming orders default to the last month; the app can request a date range.
+  const range = dateRange(req.query as Record<string, unknown>, 30);
+  const where: Prisma.ShopOrderWhereInput = {
+    supplierId,
+    ...(status ? { status } : {}),
+    ...(range
+      ? { createdAt: { gte: range.from, lte: range.to } }
+      : {}),
+  };
   const [total, orders] = await Promise.all([
-    prisma.shopOrder.count({ where: { supplierId } }),
+    prisma.shopOrder.count({ where }),
     prisma.shopOrder.findMany({
-      where: { supplierId },
+      where,
       include: {
         shop: { select: { id: true, name: true, city: true, subcity: true, phone: true, latitude: true, longitude: true } },
         acceptedBy: { select: { id: true, name: true, phone: true } },
         items: true,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: paging.skip,
       take: paging.take,
     }),

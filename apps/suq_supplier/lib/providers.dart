@@ -60,11 +60,8 @@ class SupplierSessionController extends Notifier<SupplierSessionState> {
 
     ref.read(apiProvider).setToken(token);
     ref.invalidate(profileProvider);
-    ref.invalidate(categoriesProvider);
-    ref.invalidate(productsProvider);
-    ref.invalidate(listingsProvider);
-    ref.invalidate(ordersProvider);
-    ref.read(recentlyPublishedListingProvider.notifier).remember(null);
+    ref.invalidate(summaryProvider);
+    ref.invalidate(recentOrdersProvider);
     state = SupplierSessionState(
       token: token,
       user: user,
@@ -90,11 +87,8 @@ class SupplierSessionController extends Notifier<SupplierSessionState> {
     api.setToken(null);
     state = const SupplierSessionState();
     ref.invalidate(profileProvider);
-    ref.invalidate(categoriesProvider);
-    ref.invalidate(productsProvider);
-    ref.invalidate(listingsProvider);
-    ref.invalidate(ordersProvider);
-    ref.read(recentlyPublishedListingProvider.notifier).remember(null);
+    ref.invalidate(summaryProvider);
+    ref.invalidate(recentOrdersProvider);
   }
 }
 
@@ -105,93 +99,18 @@ final profileProvider = FutureProvider<SupplierProfile>((ref) async {
   return SupplierProfile.fromJson(asMap(response['supplier']));
 });
 
-final categoriesProvider = FutureProvider<List<SupplierCategory>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/supplier/categories');
-  final fetched = (response['categories'] as List? ?? const [])
-      .whereType<Map>()
-      .map((row) => SupplierCategory.fromJson(asMap(row)))
-      .toList();
+/// Small aggregate used by the overview and account screens so they never need
+/// to download the full product, listing or order history.
+final summaryProvider = FutureProvider<SupplierSummary>((ref) async {
+  final response = await ref.watch(apiProvider).get('/supplier/summary');
+  return SupplierSummary.fromJson(asMap(response['summary']));
+});
 
-  // Some servers only return the supplier's own categories, which can leave the
-  // tab empty even though the shared library has products. Build the list from
-  // the products feed too, so every category shops see is always present.
-  final products = await ref.watch(productsProvider.future);
-
-  final byId = <String, SupplierCategory>{
-    for (final category in fetched) category.id: category,
-  };
-  final counts = <String, int>{};
-  final names = <String, String>{};
-  for (final product in products) {
-    if (product.categoryId.isEmpty || !product.active) continue;
-    counts[product.categoryId] = (counts[product.categoryId] ?? 0) + 1;
-    if (product.categoryName.isNotEmpty) {
-      names.putIfAbsent(product.categoryId, () => product.categoryName);
-    }
-  }
-
-  for (final entry in counts.entries) {
-    final existing = byId[entry.key];
-    if (existing == null) {
-      byId[entry.key] = SupplierCategory(
-        id: entry.key,
-        name: names[entry.key] ?? '',
-        productCount: entry.value,
+final recentOrdersProvider = FutureProvider<List<SupplierOrder>>((ref) async {
+  final response = await ref.watch(apiProvider).get(
+        '/supplier/orders',
+        query: {'page': '1', 'pageSize': '5'},
       );
-    } else {
-      byId[entry.key] = SupplierCategory(
-        id: existing.id,
-        name: existing.name.isEmpty
-            ? (names[entry.key] ?? '')
-            : existing.name,
-        supplierId: existing.supplierId,
-        sortOrder: existing.sortOrder,
-        productCount: entry.value,
-      );
-    }
-  }
-
-  return byId.values.toList()
-    ..sort((a, b) {
-      final order = a.sortOrder.compareTo(b.sortOrder);
-      if (order != 0) return order;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-});
-
-final productsProvider = FutureProvider<List<SupplierProduct>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/supplier/products', query: {'page': '1', 'pageSize': '50'});
-  return (response['products'] as List? ?? const [])
-      .whereType<Map>()
-      .map((row) => SupplierProduct.fromJson(asMap(row)))
-      .toList();
-});
-
-final listingsProvider = FutureProvider<List<SupplierListing>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/supplier/listings', query: {'page': '1', 'pageSize': '50'});
-  return (response['listings'] as List? ?? const [])
-      .whereType<Map>()
-      .map((row) => SupplierListing.fromJson(asMap(row)))
-      .toList();
-});
-
-/// The listing returned by the last create/update call. It is shown
-/// immediately so a successful publish is visible even if a cached listings
-/// response has not caught up yet.
-final recentlyPublishedListingProvider =
-    NotifierProvider<RecentListingController, SupplierListing?>(
-  RecentListingController.new,
-);
-
-class RecentListingController extends Notifier<SupplierListing?> {
-  @override
-  SupplierListing? build() => null;
-
-  void remember(SupplierListing? listing) => state = listing;
-}
-
-final ordersProvider = FutureProvider<List<SupplierOrder>>((ref) async {
-  final response = await ref.watch(apiProvider).get('/supplier/orders', query: {'page': '1', 'pageSize': '20'});
   return (response['orders'] as List? ?? const [])
       .whereType<Map>()
       .map((row) => SupplierOrder.fromJson(asMap(row)))

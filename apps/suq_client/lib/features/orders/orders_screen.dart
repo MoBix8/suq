@@ -24,13 +24,16 @@ class OrdersScreen extends ConsumerStatefulWidget {
 
 class _OrdersScreenState extends ConsumerState<OrdersScreen>
     with WidgetsBindingObserver {
-  static const _pageSize = 8;
+  static const _pageSize = 10;
   // Favorites are intentionally device-local (SharedPreferences). They are not
   // written to SQLite and never sent to the server.
   static const _favoritesKey = 'supplier.favorites';
   static const _cartKey = 'supplier.cart';
 
   List<Map<String, dynamic>> _listings = [];
+  // Every listing this session has seen, keyed by id. Used to keep cart items
+  // from earlier pages in sync without re-downloading the whole catalog.
+  final Map<String, Map<String, dynamic>> _listingCache = {};
   List<Map<String, dynamic>> _orders = [];
   final Map<String, _CartEntry> _cart = {};
   final Set<String> _favorites = {};
@@ -39,9 +42,15 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
   // Transport estimate per supplier, calculated on the client.
   final Map<String, DeliveryQuote> _quotes = {};
   final TextEditingController _search = TextEditingController();
+  Timer? _searchDebounce;
   String _query = '';
   bool _favoritesOnly = false;
-  int _page = 1;
+  int _listingPage = 1;
+  int _listingTotal = 0;
+  int _ordersPage = 1;
+  int _ordersTotal = 0;
+  late DateTime _ordersFrom;
+  late DateTime _ordersTo;
   double? _latitude;
   double? _longitude;
   bool _loading = true;
@@ -51,6 +60,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
   @override
   void initState() {
     super.initState();
+    final today = DateTime.now();
+    _ordersTo = DateTime(today.year, today.month, today.day);
+    _ordersFrom = _ordersTo.subtract(const Duration(days: 30));
     WidgetsBinding.instance.addObserver(this);
     _restoreLocalState();
     _load();
@@ -59,6 +71,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -98,22 +111,31 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
   }
 
   Future<void> _load() async {
+    await Future.wait([_loadListings(), _loadOrders()]);
+  }
+
+  Future<void> _loadListings() async {
     if (!mounted) return;
     setState(() {
-      if (_listings.isEmpty && _orders.isEmpty) _loading = true;
+      if (_listings.isEmpty) _loading = true;
       _error = null;
     });
     try {
-      final api = ref.read(apiProvider);
-      final results = await Future.wait([
-        api.get('/orders/suppliers'),
-        api.get('/orders', query: {'page': '1', 'pageSize': '20'}),
-      ]);
+      final response = await ref.read(apiProvider).get(
+            '/orders/suppliers',
+            query: {
+              'page': '$_listingPage',
+              'pageSize': '$_pageSize',
+              if (_query.trim().isNotEmpty) 'q': _query.trim(),
+              if (_favoritesOnly)
+                'ids': _favorites.isEmpty ? '__none__' : _favorites.join(','),
+            },
+          );
       if (!mounted) return;
 
       final flattened = <Map<String, dynamic>>[];
       final suppliers = <String, DeliveryRates>{};
-      for (final raw in (results[0]['suppliers'] as List? ?? [])) {
+      for (final raw in (response['suppliers'] as List? ?? [])) {
         if (raw is! Map) continue;
         final supplier = Map<String, dynamic>.from(raw);
         final supplierId = supplier['id']?.toString() ?? '';
@@ -129,20 +151,16 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
           listing['supplierId'] = supplierId;
           listing['supplierName'] = supplierName;
           flattened.add(listing);
+          final id = listing['id']?.toString() ?? '';
+          if (id.isNotEmpty) _listingCache[id] = listing;
         }
       }
 
-      final orders = (results[1]['orders'] as List? ?? [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-
       setState(() {
         _listings = flattened;
-        _orders = orders;
-        _suppliers
-          ..clear()
-          ..addAll(suppliers);
+        _listingTotal = asInt(response['total']);
+        // Keep rates from other pages: a cart can span several pages.
+        _suppliers.addAll(suppliers);
         _reconcileCart();
         _loading = false;
       });
@@ -156,17 +174,42 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
     }
   }
 
-  void _reconcileCart() {
-    final byId = {
-      for (final listing in _listings) listing['id'].toString(): listing,
-    };
-    final removed = <String>[];
+  Future<void> _loadOrders() async {
+    try {
+      final response = await ref.read(apiProvider).get(
+            '/orders',
+            query: {
+              'page': '$_ordersPage',
+              'pageSize': '$_pageSize',
+              'from': _ordersFromIso,
+              'to': _ordersToIso,
+            },
+          );
+      if (!mounted) return;
+      final orders = (response['orders'] as List? ?? [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      setState(() {
+        _orders = orders;
+        _ordersTotal = asInt(response['total']);
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error is ApiException ? error.message : error.toString();
+        });
+      }
+    }
+  }
 
+  void _reconcileCart() {
     for (final id in _cart.keys.toList()) {
-      final listing = byId[id];
+      final listing = _listingCache[id];
       if (listing == null) {
-        removed.add(id);
-        _cart.remove(id);
+        // The listing may simply be on a page we have not opened this session.
+        // Keep the cart line instead of dropping it; the server validates
+        // availability again when the order is submitted.
         continue;
       }
       final entry = _cart[id]!;
@@ -192,16 +235,6 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
 
     _persistCart();
     _recalculateQuotes();
-    if (removed.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        showAppSnack(
-          context,
-          '${removed.length} cart item${removed.length == 1 ? '' : 's'} are no longer available.',
-          error: true,
-        );
-      });
-    }
   }
 
   void _persistCart() {
@@ -224,44 +257,71 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
   int _minOrder(Map<String, dynamic> listing) =>
       (((listing['minOrderQty']) is num ? (listing['minOrderQty'] as num) : null)?.toInt() ?? 1).clamp(1, 10000).toInt();
 
-  List<Map<String, dynamic>> get _filteredListings {
-    final query = _query.trim().toLowerCase();
-    final items = _listings.where((listing) {
-      final id = listing['id'].toString();
-      if (_favoritesOnly && !_favorites.contains(id)) return false;
-      if (query.isEmpty) return true;
-      final haystack = [
-        listing['name'],
-        listing['category'],
-        listing['supplierName'],
-        listing['saleUnit'],
-      ]
-          .whereType<Object>()
-          .map((value) => value.toString().toLowerCase())
-          .join(' ');
-      return haystack.contains(query);
-    }).toList();
+  List<Map<String, dynamic>> get _filteredListings => _listings;
 
-    items.sort((a, b) {
-      final aFavorite = _favorites.contains(a['id'].toString());
-      final bFavorite = _favorites.contains(b['id'].toString());
-      if (aFavorite != bFavorite) return aFavorite ? -1 : 1;
-      return (a['name']?.toString() ?? '')
-          .toLowerCase()
-          .compareTo((b['name']?.toString() ?? '').toLowerCase());
+  int get _pageCount => math.max(1, (_listingTotal / _pageSize).ceil());
+
+  int get _currentPage => math.min(math.max(_listingPage, 1), _pageCount);
+
+  List<Map<String, dynamic>> get _pagedListings => _listings;
+
+  String get _ordersFromIso =>
+      DateTime(_ordersFrom.year, _ordersFrom.month, _ordersFrom.day)
+          .toUtc()
+          .toIso8601String();
+
+  String get _ordersToIso =>
+      DateTime(_ordersTo.year, _ordersTo.month, _ordersTo.day, 23, 59, 59, 999)
+          .toUtc()
+          .toIso8601String();
+
+  void _searchChanged(String value) {
+    setState(() => _query = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      setState(() => _listingPage = 1);
+      _loadListings();
     });
-    return items;
   }
 
-  int get _pageCount =>
-      math.max(1, (_filteredListings.length / _pageSize).ceil());
+  void _setFavoritesOnly(bool value) {
+    setState(() {
+      _favoritesOnly = value;
+      _listingPage = 1;
+    });
+    _loadListings();
+  }
 
-  int get _currentPage => math.min(math.max(_page, 1), _pageCount);
+  void _goToListingPage(int page) {
+    setState(() => _listingPage = page);
+    _loadListings();
+  }
 
-  List<Map<String, dynamic>> get _pagedListings {
-    final all = _filteredListings;
-    final start = (_currentPage - 1) * _pageSize;
-    return all.skip(start).take(_pageSize).toList();
+  void _goToOrdersPage(int page) {
+    setState(() => _ordersPage = page);
+    _loadOrders();
+  }
+
+  Future<void> _pickOrdersRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange: DateTimeRange(start: _ordersFrom, end: _ordersTo),
+      helpText: 'Orders between',
+      saveText: 'Apply',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _ordersFrom =
+          DateTime(picked.start.year, picked.start.month, picked.start.day);
+      _ordersTo =
+          DateTime(picked.end.year, picked.end.month, picked.end.day);
+      _ordersPage = 1;
+    });
+    await _loadOrders();
   }
 
   double get _cartSubtotal =>
@@ -523,7 +583,13 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
         error: true,
       );
     }
-    if (sentOrders > 0) await _load();
+    if (sentOrders > 0) {
+      setState(() {
+        _listingPage = 1;
+        _ordersPage = 1;
+      });
+      await _load();
+    }
     return sentOrders == groups.length;
   }
 
@@ -906,18 +972,17 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
                       tooltip: 'Clear search',
                       onPressed: () {
                         _search.clear();
+                        _searchDebounce?.cancel();
                         setState(() {
                           _query = '';
-                          _page = 1;
+                          _listingPage = 1;
                         });
+                        _loadListings();
                       },
                       icon: const Icon(Icons.close_rounded),
                     ),
             ),
-            onChanged: (value) => setState(() {
-              _query = value;
-              _page = 1;
-            }),
+            onChanged: _searchChanged,
           ),
           const SizedBox(height: 10),
           _locationCard(),
@@ -936,10 +1001,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
                       : AppColors.accent,
                 ),
                 label: Text('Favorites (${_favorites.length})'),
-                onSelected: (value) => setState(() {
-                  _favoritesOnly = value;
-                  _page = 1;
-                }),
+                onSelected: _setFavoritesOnly,
               ),
               const Spacer(),
               IconButton(
@@ -958,9 +1020,28 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
             _emptyListings(filtered)
           else
             for (final listing in pageItems) _listingCard(listing),
-          if (filtered.length > _pageSize) _pagination(filtered.length),
+          if (_listingTotal > 0) _pagination(_listingTotal),
         ],
       ),
+    );
+  }
+
+  Widget _ordersDateFilter() {
+    return Row(
+      children: [
+        const Icon(Icons.date_range_rounded, size: 18, color: AppColors.muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            '${formatDate(_ordersFrom)} – ${formatDate(_ordersTo)}',
+            style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+          ),
+        ),
+        TextButton(
+          onPressed: _pickOrdersRange,
+          child: const Text('Change'),
+        ),
+      ],
     );
   }
 
@@ -978,6 +1059,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
         key: const PageStorageKey('supplier-orders'),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
+          _ordersDateFilter(),
           if (_error != null) ...[
             _inlineError(_error!),
             const SizedBox(height: 10),
@@ -985,36 +1067,53 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
           if (_orders.isEmpty)
             EmptyState(
               icon: Icons.receipt_long_outlined,
-              title: 'No orders yet',
+              title: 'No orders in this period',
               message:
-                  'Orders you place from the Listings tab will appear here.',
-              action: OutlinedButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Refresh'),
+                  'Orders placed between ${formatDate(_ordersFrom)} and ${formatDate(_ordersTo)} will appear here.',
+              action: TextButton.icon(
+                onPressed: _pickOrdersRange,
+                icon: const Icon(Icons.date_range_rounded, size: 18),
+                label: const Text('Change dates'),
               ),
             )
-          else
+          else ...[
             for (final order in _orders) _orderCard(order),
+            if (_ordersTotal > 0) _ordersPagination(),
+          ],
         ],
       ),
     );
   }
 
-  Widget _emptyListings(List<Map<String, dynamic>> filtered) {
-    if (_listings.isEmpty) {
-      return EmptyState(
-        icon: Icons.local_shipping_outlined,
-        title: 'No supplier listings yet',
-        message:
-            'Suppliers will appear here when they publish wholesale listings. Tap refresh after they publish.',
-        action: OutlinedButton.icon(
-          onPressed: _load,
-          icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: const Text('Refresh'),
+  Widget _ordersPagination() {
+    final pages = math.max(1, (_ordersTotal / _pageSize).ceil());
+    final page = math.min(math.max(_ordersPage, 1), pages);
+    final start = (page - 1) * _pageSize + 1;
+    final end = math.min(page * _pageSize, _ordersTotal);
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Previous page',
+          onPressed: page > 1 ? () => _goToOrdersPage(page - 1) : null,
+          icon: const Icon(Icons.chevron_left_rounded),
         ),
-      );
-    }
+        Expanded(
+          child: Text(
+            '$start–$end of $_ordersTotal · page $page of $pages',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Next page',
+          onPressed: page < pages ? () => _goToOrdersPage(page + 1) : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyListings(List<Map<String, dynamic>> filtered) {
     if (_favoritesOnly && filtered.isEmpty) {
       return EmptyState(
         icon: Icons.star_border_rounded,
@@ -1022,15 +1121,34 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
         message:
             'Tap the star on a listing to keep it here for quick access.',
         action: TextButton(
-          onPressed: () => setState(() => _favoritesOnly = false),
+          onPressed: () {
+            setState(() {
+              _favoritesOnly = false;
+              _listingPage = 1;
+            });
+            _loadListings();
+          },
           child: const Text('Show all listings'),
         ),
       );
     }
-    return const EmptyState(
-      icon: Icons.search_off_rounded,
-      title: 'No listings match your search',
-      message: 'Try a different product name, category, or supplier.',
+    if (_query.trim().isNotEmpty && filtered.isEmpty) {
+      return const EmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No listings match your search',
+        message: 'Try a different product name, category, or supplier.',
+      );
+    }
+    return EmptyState(
+      icon: Icons.local_shipping_outlined,
+      title: 'No supplier listings yet',
+      message:
+          'Suppliers will appear here when they publish wholesale listings. Tap refresh after they publish.',
+      action: OutlinedButton.icon(
+        onPressed: _load,
+        icon: const Icon(Icons.refresh_rounded, size: 18),
+        label: const Text('Refresh'),
+      ),
     );
   }
 
@@ -1135,29 +1253,27 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen>
   }
 
   Widget _pagination(int total) {
-    final start = (_currentPage - 1) * _pageSize + 1;
-    final end = math.min(_currentPage * _pageSize, total);
+    final page = _currentPage;
+    final start = (page - 1) * _pageSize + 1;
+    final end = math.min(page * _pageSize, total);
+    final pages = _pageCount;
     return Row(
       children: [
         IconButton(
           tooltip: 'Previous page',
-          onPressed: _currentPage > 1
-              ? () => setState(() => _page = _currentPage - 1)
-              : null,
+          onPressed: page > 1 ? () => _goToListingPage(page - 1) : null,
           icon: const Icon(Icons.chevron_left_rounded),
         ),
         Expanded(
           child: Text(
-            '$start–$end of $total',
+            '$start–$end of $total · page $page of $pages',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, color: AppColors.muted),
           ),
         ),
         IconButton(
           tooltip: 'Next page',
-          onPressed: _currentPage < _pageCount
-              ? () => setState(() => _page = _currentPage + 1)
-              : null,
+          onPressed: page < pages ? () => _goToListingPage(page + 1) : null,
           icon: const Icon(Icons.chevron_right_rounded),
         ),
       ],

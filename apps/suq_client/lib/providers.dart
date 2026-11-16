@@ -585,7 +585,7 @@ class LibraryFeedController extends AsyncNotifier<LibraryFeedState> {
   LibraryFeedController(this.query);
 
   final LibraryFeedQuery query;
-  static const _pageSize = 40;
+  static const _pageSize = 10;
 
   @override
   Future<LibraryFeedState> build() async {
@@ -687,6 +687,7 @@ final paymentsProvider = FutureProvider<List<PaymentRecord>>((ref) async {
     ref,
     '/payments/mine',
     'payments.mine.$shopId',
+    query: {'page': '1', 'pageSize': '10'},
   );
   final list = response['payments'] as List<dynamic>? ?? [];
   return list

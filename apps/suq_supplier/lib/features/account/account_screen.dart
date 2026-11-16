@@ -164,10 +164,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(profileProvider);
     final session = ref.watch(sessionProvider);
-    final categories = ref.watch(categoriesProvider).asData?.value;
-    final products = ref.watch(productsProvider).asData?.value;
-    final listings = ref.watch(listingsProvider).asData?.value;
-    final orders = ref.watch(ordersProvider).asData?.value;
+    final summary = ref.watch(summaryProvider).asData?.value;
 
     ref.listen<AsyncValue<SupplierProfile>>(profileProvider, (previous, next) {
       final data = next.asData?.value;
@@ -208,27 +205,19 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
     final side = _AccountSidePanel(
       user: session.user,
       profile: profile,
-      categoryCount: categories
-          ?.where((category) => category.supplierId == profile.id)
-          .length,
-      productCount: products
-          ?.where((product) => product.supplierId == profile.id)
-          .length,
-      listingCount: listings?.length,
-      activeListingCount:
-          listings?.where((listing) => listing.active).length,
-      orderCount: orders?.length,
-      pendingOrderCount: orders?.where((order) => order.isPending).length,
+      categoryCount: summary?.categoryCount,
+      productCount: summary?.productCount,
+      listingCount: summary?.listingCount,
+      activeListingCount: summary?.activeListingCount,
+      orderCount: summary?.orderCount,
+      pendingOrderCount: summary?.pendingOrderCount,
       onSignOut: _signOut,
     );
 
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(profileProvider);
-        ref.invalidate(categoriesProvider);
-        ref.invalidate(productsProvider);
-        ref.invalidate(listingsProvider);
-        ref.invalidate(ordersProvider);
+        ref.invalidate(summaryProvider);
         await ref.read(profileProvider.future);
       },
       child: ListView(

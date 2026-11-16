@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api_client.dart';
 import '../../core/formatters.dart';
 import '../../core/order_status.dart';
 import '../../core/theme.dart';
@@ -17,7 +20,16 @@ class OrdersScreen extends ConsumerStatefulWidget {
 }
 
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
+  static const _pageSize = 10;
+
   String _filter = 'ALL';
+  List<SupplierOrder> _orders = const [];
+  int _page = 1;
+  int _total = 0;
+  late DateTime _from;
+  late DateTime _to;
+  bool _loading = true;
+  String? _error;
 
   static const _filters = [
     ('ALL', 'All'),
@@ -29,93 +41,249 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    final today = DateTime.now();
+    _to = DateTime(today.year, today.month, today.day);
+    _from = _to.subtract(const Duration(days: 30));
+    _load();
+  }
+
+  String get _fromIso =>
+      DateTime(_from.year, _from.month, _from.day).toUtc().toIso8601String();
+
+  String get _toIso => DateTime(_to.year, _to.month, _to.day, 23, 59, 59, 999)
+      .toUtc()
+      .toIso8601String();
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      if (_orders.isEmpty) _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await ref.read(apiProvider).get(
+            '/supplier/orders',
+            query: {
+              'page': '$_page',
+              'pageSize': '$_pageSize',
+              if (_filter != 'ALL') 'status': _filter,
+              'from': _fromIso,
+              'to': _toIso,
+            },
+          );
+      if (!mounted) return;
+      final orders = (response['orders'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => SupplierOrder.fromJson(asMap(row)))
+          .toList();
+      setState(() {
+        _orders = orders;
+        _total = asInt(response['total']);
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error is ApiException ? error.message : error.toString();
+      });
+    }
+  }
+
+  Future<void> _refresh() async {
+    ref.invalidate(summaryProvider);
+    ref.invalidate(recentOrdersProvider);
+    await _load();
+  }
+
+  void _selectFilter(String filter) {
+    setState(() {
+      _filter = filter;
+      _page = 1;
+    });
+    _load();
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange: DateTimeRange(start: _from, end: _to),
+      helpText: 'Orders between',
+      saveText: 'Apply',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _from = DateTime(picked.start.year, picked.start.month, picked.start.day);
+      _to = DateTime(picked.end.year, picked.end.month, picked.end.day);
+      _page = 1;
+    });
+    await _load();
+  }
+
+  Future<void> _openOrder(SupplierOrder order) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => OrderDetailDialog(order: order),
+    );
+    if (!mounted) return;
+    ref.invalidate(summaryProvider);
+    ref.invalidate(recentOrdersProvider);
+    await _load();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final ordersAsync = ref.watch(ordersProvider);
+    final summary = ref.watch(summaryProvider).asData?.value;
+    final pending = summary?.pendingOrderCount;
 
-    return AsyncValueView<List<SupplierOrder>>(
-      value: ordersAsync,
-      onRetry: () => ref.invalidate(ordersProvider),
-      loadingMessage: 'Loading shop orders…',
-      builder: (orders) {
-        final pending = orders.where((order) => order.isPending).length;
-        final filtered = _filter == 'ALL'
-            ? orders
-            : orders.where((order) => order.status == _filter).toList();
-
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(ordersProvider);
-            await ref.read(ordersProvider.future);
-          },
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1000),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      PageHeader(
-                        title: 'Shop orders',
-                        subtitle: pending == 0
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1000),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PageHeader(
+                    title: 'Shop orders',
+                    subtitle: pending == null
+                        ? '$_total order${_total == 1 ? '' : 's'}'
+                        : pending == 0
                             ? 'No orders are waiting for review.'
                             : '$pending order${pending == 1 ? '' : 's'} waiting for a delivery quote.',
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.date_range_rounded,
+                        size: 18,
+                        color: SupplierColors.muted,
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 38,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            for (final filter in _filters)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    filter.$1 == 'ALL'
-                                        ? 'All (${orders.length})'
-                                        : '${filter.$2} (${orders.where((o) => o.status == filter.$1).length})',
-                                  ),
-                                  selected: _filter == filter.$1,
-                                  onSelected: (_) =>
-                                      setState(() => _filter = filter.$1),
-                                ),
-                              ),
-                          ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${formatDate(_from)} – ${formatDate(_to)}',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: SupplierColors.muted,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      if (filtered.isEmpty)
-                        EmptyState(
-                          icon: Icons.receipt_long_outlined,
-                          title: orders.isEmpty
-                              ? 'No orders yet'
-                              : 'Nothing in this filter',
-                          message: orders.isEmpty
-                              ? 'When a shop orders one of your listings it will appear here.'
-                              : 'Try a different status filter.',
-                        )
-                      else
-                        for (final order in filtered) ...[
-                          _OrderCard(
-                            order: order,
-                            onOpen: () => showDialog<void>(
-                              context: context,
-                              builder: (_) => OrderDetailDialog(order: order),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                        ],
+                      TextButton(
+                        onPressed: _pickRange,
+                        child: const Text('Change'),
+                      ),
                     ],
                   ),
-                ),
+                  SizedBox(
+                    height: 38,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        for (final filter in _filters)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(
+                                filter.$1 == 'ALL'
+                                    ? 'All ($_total)'
+                                    : filter.$2,
+                              ),
+                              selected: _filter == filter.$1,
+                              onSelected: (_) => _selectFilter(filter.$1),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_error != null) ...[
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: SupplierColors.danger),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_loading && _orders.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_orders.isEmpty)
+                    EmptyState(
+                      icon: Icons.receipt_long_outlined,
+                      title: _total == 0
+                          ? (_filter == 'ALL'
+                              ? 'No orders in this period'
+                              : 'Nothing in this filter')
+                          : 'Nothing in this filter',
+                      message: _total == 0
+                          ? 'Orders placed between ${formatDate(_from)} and ${formatDate(_to)} will appear here.'
+                          : 'Try a different status filter.',
+                    )
+                  else ...[
+                    for (final order in _orders) ...[
+                      _OrderCard(
+                        order: order,
+                        onOpen: () => _openOrder(order),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    _pagination(),
+                  ],
+                ],
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  Widget _pagination() {
+    final start = (_page - 1) * _pageSize + 1;
+    final end = math.min(_page * _pageSize, _total);
+    final pages = math.max(1, (_total / _pageSize).ceil());
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Previous page',
+          onPressed: _page > 1
+              ? () {
+                  setState(() => _page -= 1);
+                  _load();
+                }
+              : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+        ),
+        Expanded(
+          child: Text(
+            '$start–$end of $_total · page $_page of $pages',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: SupplierColors.muted),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Next page',
+          onPressed: _page < pages
+              ? () {
+                  setState(() => _page += 1);
+                  _load();
+                }
+              : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+        ),
+      ],
     );
   }
 }

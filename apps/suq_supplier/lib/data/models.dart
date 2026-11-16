@@ -83,6 +83,37 @@ class SupplierProfile {
       );
 }
 
+class SupplierSummary {
+  const SupplierSummary({
+    this.orderCount = 0,
+    this.pendingOrderCount = 0,
+    this.deliveredOrderCount = 0,
+    this.listingCount = 0,
+    this.activeListingCount = 0,
+    this.productCount = 0,
+    this.categoryCount = 0,
+  });
+
+  final int orderCount;
+  final int pendingOrderCount;
+  final int deliveredOrderCount;
+  final int listingCount;
+  final int activeListingCount;
+  final int productCount;
+  final int categoryCount;
+
+  factory SupplierSummary.fromJson(Map<String, dynamic> json) =>
+      SupplierSummary(
+        orderCount: asInt(json['orderCount']),
+        pendingOrderCount: asInt(json['pendingOrderCount']),
+        deliveredOrderCount: asInt(json['deliveredOrderCount']),
+        listingCount: asInt(json['listingCount']),
+        activeListingCount: asInt(json['activeListingCount']),
+        productCount: asInt(json['productCount']),
+        categoryCount: asInt(json['categoryCount']),
+      );
+}
+
 class SupplierCategory {
   const SupplierCategory({
     required this.id,

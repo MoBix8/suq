@@ -1,8 +1,10 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireBoundDevice, requireShop } from "../auth";
 import { AppError, asyncHandler } from "../errors";
 import { computeDeliveryQuote } from "../lib/delivery";
+import { dateRange } from "../lib/dateRange";
 import { prisma } from "../prisma";
 import { pageParams, pageMeta } from "../lib/pagination";
 
@@ -19,29 +21,84 @@ ordersRouter.patch("/location", asyncHandler(async (req, res) => {
   res.json({ location: { latitude: shop.latitude, longitude: shop.longitude } });
 }));
 
-ordersRouter.get("/suppliers", asyncHandler(async (_req, res) => {
-  requireShop(_req);
-  const suppliers = await prisma.supplier.findMany({
-    where: { listings: { some: { active: true } } },
-    select: {
-      id: true,
-      businessName: true,
-      warehouseName: true,
-      latitude: true,
-      longitude: true,
-      deliveryBaseFee: true,
-      deliveryPerKm: true,
-      deliveryPerKg: true,
-      deliveryPerCubicMeter: true,
-      listings: {
-        where: { active: true },
-        include: { publishedBy: { select: { id: true, name: true } } },
-        orderBy: { createdAt: "desc" },
+ordersRouter.get("/suppliers", asyncHandler(async (req, res) => {
+  requireShop(req);
+  const paging = pageParams(req.query as Record<string, unknown>, 10, 100);
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const category =
+    typeof req.query.category === "string" ? req.query.category.trim() : "";
+  const ids =
+    typeof req.query.ids === "string"
+      ? req.query.ids
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : [];
+
+  const where: Prisma.SupplierListingWhereInput = {
+    active: true,
+    ...(category
+      ? { category: { equals: category, mode: "insensitive" } }
+      : {}),
+    ...(ids.length ? { id: { in: ids } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { category: { contains: q, mode: "insensitive" } },
+            { supplier: { businessName: { contains: q, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, listings] = await Promise.all([
+    prisma.supplierListing.count({ where }),
+    prisma.supplierListing.findMany({
+      where,
+      include: {
+        supplier: {
+          select: {
+            id: true,
+            businessName: true,
+            warehouseName: true,
+            latitude: true,
+            longitude: true,
+            deliveryBaseFee: true,
+            deliveryPerKm: true,
+            deliveryPerKg: true,
+            deliveryPerCubicMeter: true,
+          },
+        },
+        publishedBy: { select: { id: true, name: true } },
       },
-    },
-    orderBy: { businessName: "asc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+  ]);
+
+  // Keep the old response shape: one entry per supplier on this page, with the
+  // supplier's page listings nested under it.
+  const bySupplier = new Map<string, Record<string, unknown>>();
+  for (const listing of listings) {
+    const { supplier, ...rest } = listing;
+    let entry = bySupplier.get(supplier.id);
+    if (!entry) {
+      entry = { ...supplier, listings: [] };
+      bySupplier.set(supplier.id, entry);
+    }
+    (entry.listings as unknown[]).push({
+      ...rest,
+      supplierId: supplier.id,
+      supplierName: supplier.businessName,
+    });
+  }
+
+  res.json({
+    suppliers: [...bySupplier.values()],
+    ...pageMeta(total, paging),
   });
-  res.json({ suppliers });
 }));
 
 const orderItemSchema = z.object({
@@ -224,17 +281,31 @@ ordersRouter.post("/", asyncHandler(async (req, res) => {
 
 ordersRouter.get("/", asyncHandler(async (req, res) => {
   const { shopId } = requireShop(req);
-  const paging = pageParams(req.query as Record<string, unknown>, 20, 100);
+  const paging = pageParams(req.query as Record<string, unknown>, 10, 100);
+  const statusParam = req.query.status;
+  const status =
+    typeof statusParam === "string" && statusParam && statusParam !== "ALL"
+      ? statusParam
+      : undefined;
+  // Order history is date-bound: without explicit dates, show the last month.
+  const range = dateRange(req.query as Record<string, unknown>, 30);
+  const where: Prisma.ShopOrderWhereInput = {
+    shopId,
+    ...(status ? { status } : {}),
+    ...(range
+      ? { createdAt: { gte: range.from, lte: range.to } }
+      : {}),
+  };
   const [total, orders] = await Promise.all([
-    prisma.shopOrder.count({ where: { shopId } }),
+    prisma.shopOrder.count({ where }),
     prisma.shopOrder.findMany({
-      where: { shopId },
+      where,
       include: {
         items: true,
         supplier: { select: { businessName: true, warehouseName: true } },
         acceptedBy: { select: { id: true, name: true, phone: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: paging.skip,
       take: paging.take,
     }),
